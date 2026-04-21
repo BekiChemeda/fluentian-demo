@@ -31,6 +31,7 @@ from app.services.realtime_service import (
     set_presence,
 )
 from app.services.idempotency_service import fingerprint_payload, get_saved_response, save_response
+from app.services.community_service import send_chat_message
 from app.services.notification_service import create_notification
 from app.services.session_service import end_session, get_user_stats, report_user
 
@@ -39,6 +40,26 @@ router = APIRouter(prefix="", tags=["realtime"])
 DbDep = Annotated[AsyncSession, Depends(get_db)]
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 IdempotencyKeyHeader = Annotated[str | None, Header(alias="Idempotency-Key")]
+
+
+def _validate_signal_payload(event_type: str, payload: dict) -> str | None:
+    if event_type in {"WEBRTC_OFFER", "WEBRTC_ANSWER"}:
+        sdp_type = payload.get("type")
+        sdp = payload.get("sdp")
+        if not isinstance(sdp_type, str) or not sdp_type:
+            return "invalid_signal_type"
+        if not isinstance(sdp, str) or not sdp:
+            return "invalid_signal_sdp"
+    elif event_type == "WEBRTC_ICE_CANDIDATE":
+        candidate = payload.get("candidate")
+        if not isinstance(candidate, str) or not candidate:
+            return "invalid_ice_candidate"
+    elif event_type == "CALL_MUTE_TOGGLED":
+        muted = payload.get("muted")
+        if not isinstance(muted, bool):
+            return "invalid_mute_value"
+
+    return None
 
 
 @router.post("/queue/join")
@@ -233,6 +254,19 @@ async def match_socket(websocket: WebSocket) -> None:
                 "CALL_HANGUP",
                 "CALL_MUTE_TOGGLED",
             }:
+                validation_error = _validate_signal_payload(event_type, payload)
+                if validation_error:
+                    await websocket.send_json(
+                        build_event(
+                            "ERROR_EVENT",
+                            {
+                                "reason": validation_error,
+                                "event_type": event_type,
+                            },
+                        ).model_dump(mode="json")
+                    )
+                    continue
+
                 async with AsyncSessionLocal() as db:
                     peer_id = await get_active_peer_id(db, user.id)
                     if peer_id is None:
@@ -266,6 +300,66 @@ async def match_socket(websocket: WebSocket) -> None:
                             body=f"{user.email} invited you to an audio session.",
                             metadata={"from_user_id": user.id},
                         )
+            elif event_type == "CHAT_MESSAGE":
+                body = str(payload.get("body", "")).strip()
+                if not body:
+                    await websocket.send_json(
+                        build_event(
+                            "ERROR_EVENT",
+                            {
+                                "reason": "empty_message",
+                                "event_type": event_type,
+                            },
+                        ).model_dump(mode="json")
+                    )
+                    continue
+
+                if len(body) > 1000:
+                    await websocket.send_json(
+                        build_event(
+                            "ERROR_EVENT",
+                            {
+                                "reason": "message_too_long",
+                                "event_type": event_type,
+                            },
+                        ).model_dump(mode="json")
+                    )
+                    continue
+
+                async with AsyncSessionLocal() as db:
+                    peer_id = await get_active_peer_id(db, user.id)
+                    if peer_id is None:
+                        await websocket.send_json(
+                            build_event(
+                                "ERROR_EVENT",
+                                {
+                                    "reason": "no_active_session",
+                                    "event_type": event_type,
+                                },
+                            ).model_dump(mode="json")
+                        )
+                        continue
+
+                    saved_message = await send_chat_message(db, user, peer_id, body)
+                    event_payload = {
+                        "id": saved_message.id,
+                        "sender_id": saved_message.sender_id,
+                        "receiver_id": saved_message.receiver_id,
+                        "body": saved_message.body,
+                        "created_at": saved_message.created_at.isoformat(),
+                    }
+
+                    await publish_user_event(peer_id, build_event("CHAT_MESSAGE", event_payload))
+                    await publish_user_event(user.id, build_event("CHAT_MESSAGE", event_payload))
+
+                    await create_notification(
+                        db,
+                        user_id=peer_id,
+                        event_type="chat_message",
+                        title="New message",
+                        body="You received a new session chat message.",
+                        metadata={"sender_id": user.id, "message_id": saved_message.id},
+                    )
             elif event_type == "USER_DISCONNECTED":
                 await set_presence(user.id, "offline")
             else:

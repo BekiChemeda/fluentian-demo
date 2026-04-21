@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -30,6 +31,8 @@ class CommunicationController extends Notifier<CommunicationState> {
   int _reconnectAttempts = 0;
   bool _reconnectScheduled = false;
   final WebRtcCallService _webRtc = WebRtcCallService();
+  final Set<int> _seenMessageIds = <int>{};
+  final Queue<int> _seenMessageOrder = ListQueue<int>();
 
   @override
   CommunicationState build() {
@@ -43,7 +46,8 @@ class CommunicationController extends Notifier<CommunicationState> {
     return const CommunicationState();
   }
 
-  CommunicationRepository get _repository => ref.read(communicationRepositoryProvider);
+  CommunicationRepository get _repository =>
+      ref.read(communicationRepositoryProvider);
 
   Future<void> bootstrap() async {
     await _loadStats();
@@ -118,22 +122,42 @@ class CommunicationController extends Notifier<CommunicationState> {
       messages: const [],
       waitingPhrase: _waitingPhrases.first,
     );
+    _seenMessageIds.clear();
+    _seenMessageOrder.clear();
   }
 
   Future<void> sendTextMessage(String body) async {
     final partner = state.partner;
-    if (partner == null || body.trim().isEmpty) {
+    final text = body.trim();
+    if (partner == null || text.isEmpty) {
       return;
     }
 
-    final sent = await _repository.sendTextMessage(receiverId: partner.id, body: body.trim());
-    final message = CommunicationMessage(
-      author: 'You',
-      body: sent['body'] as String? ?? body.trim(),
-      createdAt: DateTime.now().toUtc(),
-      isMe: true,
+    // Prefer the websocket path for active sessions to keep text/audio chat on one realtime channel.
+    if (_channel != null && state.phase == CommunicationPhase.session) {
+      _sendSocketEvent(type: 'CHAT_MESSAGE', payload: {'body': text});
+      return;
+    }
+
+    final sent =
+        await _repository.sendTextMessage(receiverId: partner.id, body: text);
+    final messageId = sent['id'] as int?;
+    if (messageId != null && !_rememberMessageId(messageId)) {
+      return;
+    }
+    final createdAt = DateTime.tryParse(sent['created_at'] as String? ?? '') ??
+        DateTime.now().toUtc();
+    state = state.copyWith(
+      messages: [
+        ...state.messages,
+        CommunicationMessage(
+          author: 'You',
+          body: sent['body'] as String? ?? text,
+          createdAt: createdAt,
+          isMe: true,
+        ),
+      ],
     );
-    state = state.copyWith(messages: [...state.messages, message]);
   }
 
   Future<void> refreshMessages() async {
@@ -145,10 +169,17 @@ class CommunicationController extends Notifier<CommunicationState> {
     try {
       final items = await _repository.listMessages(partner.id);
       final parsed = items.map((item) {
+        final id = item['id'] as int?;
+        if (id != null) {
+          _rememberMessageId(id);
+        }
         return CommunicationMessage(
-          author: (item['sender_id'] as int? ?? 0) == partner.id ? partner.email : 'You',
+          author: (item['sender_id'] as int? ?? 0) == partner.id
+              ? partner.email
+              : 'You',
           body: item['body'] as String? ?? '',
-          createdAt: DateTime.tryParse(item['created_at'] as String? ?? '') ?? DateTime.now().toUtc(),
+          createdAt: DateTime.tryParse(item['created_at'] as String? ?? '') ??
+              DateTime.now().toUtc(),
           isMe: (item['sender_id'] as int? ?? 0) != partner.id,
         );
       }).toList();
@@ -162,7 +193,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       return;
     }
 
-    final duration = DateTime.now().toUtc().difference(session.startTime).inSeconds;
+    final duration =
+        DateTime.now().toUtc().difference(session.startTime).inSeconds;
     try {
       final data = await _repository.endSession(
         sessionId: session.sessionId,
@@ -174,7 +206,8 @@ class CommunicationController extends Notifier<CommunicationState> {
         sessionType: data['session_type'] as String? ?? session.sessionType,
         status: data['status'] as String? ?? 'ended',
         startTime: session.startTime,
-        endTime: DateTime.tryParse(data['end_time'] as String? ?? '') ?? DateTime.now().toUtc(),
+        endTime: DateTime.tryParse(data['end_time'] as String? ?? '') ??
+            DateTime.now().toUtc(),
         durationSeconds: data['duration'] as int? ?? duration,
         recordingUrl: data['recording_url'] as String?,
         reportFlag: data['report_flag'] as bool? ?? false,
@@ -200,7 +233,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       _sendSocketEvent(type: 'WEBRTC_OFFER', payload: offer);
       state = state.copyWith(callSignalStatus: 'offer_sent');
     } catch (error) {
-      state = state.copyWith(errorMessage: error.toString(), callSignalStatus: 'offer_failed');
+      state = state.copyWith(
+          errorMessage: error.toString(), callSignalStatus: 'offer_failed');
     }
   }
 
@@ -297,7 +331,9 @@ class CommunicationController extends Notifier<CommunicationState> {
   }
 
   void _handleSocketEvent(dynamic rawEvent) {
-    final event = rawEvent is String ? jsonDecode(rawEvent) as Map<String, dynamic> : rawEvent as Map<String, dynamic>;
+    final event = rawEvent is String
+        ? jsonDecode(rawEvent) as Map<String, dynamic>
+        : rawEvent as Map<String, dynamic>;
     final type = (event['type'] as String? ?? '').toUpperCase();
     final payload = event['payload'] as Map<String, dynamic>? ?? const {};
 
@@ -306,7 +342,9 @@ class CommunicationController extends Notifier<CommunicationState> {
         _startHeartbeat();
         state = state.copyWith(
           queueStatus: CommunicationQueueStatus.searching,
-          waitingPhrase: payload['queue_joined'] == true ? _waitingPhrases[_phraseIndex] : state.waitingPhrase,
+          waitingPhrase: payload['queue_joined'] == true
+              ? _waitingPhrases[_phraseIndex]
+              : state.waitingPhrase,
         );
         break;
       case 'MATCH_FOUND':
@@ -354,16 +392,23 @@ class CommunicationController extends Notifier<CommunicationState> {
           state = state.copyWith(
             session: currentSession.copyWith(
               status: 'ended',
-              durationSeconds: payload['duration'] as int? ?? currentSession.durationSeconds,
+              durationSeconds:
+                  payload['duration'] as int? ?? currentSession.durationSeconds,
             ),
             phase: CommunicationPhase.postSession,
             queueStatus: CommunicationQueueStatus.idle,
             presenceLabel: 'ONLINE',
             callSignalStatus: 'ended',
           );
+          _seenMessageIds.clear();
+          _seenMessageOrder.clear();
         }
         break;
       case 'CHAT_MESSAGE':
+        final messageId = payload['id'] as int?;
+        if (messageId != null && !_rememberMessageId(messageId)) {
+          break;
+        }
         final body = payload['body'] as String? ?? '';
         if (body.isEmpty) {
           break;
@@ -372,7 +417,9 @@ class CommunicationController extends Notifier<CommunicationState> {
         final partner = state.partner;
         final isMe = partner == null ? false : senderId != partner.id;
         final author = isMe ? 'You' : (partner?.email ?? 'Partner');
-        final createdAt = DateTime.tryParse(payload['created_at'] as String? ?? '') ?? DateTime.now().toUtc();
+        final createdAt =
+            DateTime.tryParse(payload['created_at'] as String? ?? '') ??
+                DateTime.now().toUtc();
         state = state.copyWith(
           messages: [
             ...state.messages,
@@ -415,9 +462,13 @@ class CommunicationController extends Notifier<CommunicationState> {
           presenceLabel: 'ONLINE',
           errorMessage: 'Partner disconnected',
         );
+        _seenMessageIds.clear();
+        _seenMessageOrder.clear();
         break;
       case 'ERROR_EVENT':
-        state = state.copyWith(errorMessage: payload['reason'] as String? ?? 'communication_error');
+        state = state.copyWith(
+            errorMessage:
+                payload['reason'] as String? ?? 'communication_error');
         break;
     }
   }
@@ -448,7 +499,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       if (_channel == null) {
         return;
       }
-      _sendSocketEvent(type: 'MATCH_PROGRESS', payload: {'phase': state.phase.name});
+      _sendSocketEvent(
+          type: 'MATCH_PROGRESS', payload: {'phase': state.phase.name});
     });
   }
 
@@ -457,7 +509,8 @@ class CommunicationController extends Notifier<CommunicationState> {
     _heartbeatTimer = null;
   }
 
-  void _sendSocketEvent({required String type, required Map<String, dynamic> payload}) {
+  void _sendSocketEvent(
+      {required String type, required Map<String, dynamic> payload}) {
     final channel = _channel;
     if (channel == null) {
       return;
@@ -471,9 +524,10 @@ class CommunicationController extends Notifier<CommunicationState> {
   }
 
   void _scheduleReconnect() {
-    final shouldReconnect = state.queueStatus == CommunicationQueueStatus.searching ||
-        state.phase == CommunicationPhase.session ||
-        state.queueStatus == CommunicationQueueStatus.queued;
+    final shouldReconnect =
+        state.queueStatus == CommunicationQueueStatus.searching ||
+            state.phase == CommunicationPhase.session ||
+            state.queueStatus == CommunicationQueueStatus.queued;
     if (!shouldReconnect || _reconnectScheduled) {
       return;
     }
@@ -512,7 +566,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       _sendSocketEvent(type: 'WEBRTC_ANSWER', payload: answer);
       state = state.copyWith(callSignalStatus: 'answer_sent');
     } catch (error) {
-      state = state.copyWith(errorMessage: error.toString(), callSignalStatus: 'answer_failed');
+      state = state.copyWith(
+          errorMessage: error.toString(), callSignalStatus: 'answer_failed');
     }
   }
 
@@ -521,7 +576,9 @@ class CommunicationController extends Notifier<CommunicationState> {
       final signal = _extractSignalPayload(payload);
       await _webRtc.setRemoteDescription(signal);
     } catch (error) {
-      state = state.copyWith(errorMessage: error.toString(), callSignalStatus: 'answer_apply_failed');
+      state = state.copyWith(
+          errorMessage: error.toString(),
+          callSignalStatus: 'answer_apply_failed');
     }
   }
 
@@ -530,7 +587,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       final signal = _extractSignalPayload(payload);
       await _webRtc.addIceCandidate(signal);
     } catch (error) {
-      state = state.copyWith(errorMessage: error.toString(), callSignalStatus: 'ice_failed');
+      state = state.copyWith(
+          errorMessage: error.toString(), callSignalStatus: 'ice_failed');
     }
   }
 
@@ -545,7 +603,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       }
 
       await Future<void>.delayed(const Duration(milliseconds: 350));
-      if (state.phase != CommunicationPhase.session || state.session?.sessionType != 'audio') {
+      if (state.phase != CommunicationPhase.session ||
+          state.session?.sessionType != 'audio') {
         return;
       }
 
@@ -561,5 +620,18 @@ class CommunicationController extends Notifier<CommunicationState> {
       return nested;
     }
     return payload;
+  }
+
+  bool _rememberMessageId(int messageId) {
+    if (_seenMessageIds.contains(messageId)) {
+      return false;
+    }
+    _seenMessageIds.add(messageId);
+    _seenMessageOrder.addLast(messageId);
+    while (_seenMessageOrder.length > 512) {
+      final expired = _seenMessageOrder.removeFirst();
+      _seenMessageIds.remove(expired);
+    }
+    return true;
   }
 }
