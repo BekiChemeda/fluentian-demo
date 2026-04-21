@@ -19,7 +19,8 @@ class CommunicationParticipant {
       email: json['email'] as String? ?? 'partner',
       xp: json['xp'] as int? ?? 0,
       streak: json['streak'] as int? ?? 0,
-      language: json['native_language'] as String? ?? json['language'] as String?,
+      language:
+          json['native_language'] as String? ?? json['language'] as String?,
     );
   }
 }
@@ -99,7 +100,8 @@ class CommunicationStats {
       yesterday: json['yesterday'] as int? ?? 0,
       weekly: json['weekly'] as int? ?? 0,
       totalSessions: json['total_sessions'] as int? ?? 0,
-      averageSessionDuration: (json['average_session_duration'] as num?)?.toDouble() ?? 0,
+      averageSessionDuration:
+          (json['average_session_duration'] as num?)?.toDouble() ?? 0,
       lastActiveTime: json['last_active_time'] == null
           ? null
           : DateTime.tryParse(json['last_active_time'] as String),
@@ -107,8 +109,16 @@ class CommunicationStats {
   }
 }
 
-enum CommunicationConnectionStatus { disconnected, connecting, connected, reconnecting, failed }
+enum CommunicationConnectionStatus {
+  disconnected,
+  connecting,
+  connected,
+  reconnecting,
+  failed
+}
+
 enum CommunicationQueueStatus { idle, queued, searching, matched, leaving }
+
 enum CommunicationPhase { match, session, postSession }
 
 class CommunicationMessage {
@@ -143,6 +153,11 @@ class CommunicationState {
     this.recordingConsent = false,
     this.isMuted = false,
     this.callSignalStatus = 'idle',
+    this.sttAvailable = false,
+    this.ttsAvailable = false,
+    this.isListening = false,
+    this.isSpeaking = false,
+    this.liveTranscript = '',
   });
 
   final CommunicationConnectionStatus connectionStatus;
@@ -161,8 +176,15 @@ class CommunicationState {
   final bool recordingConsent;
   final bool isMuted;
   final String callSignalStatus;
+  final bool sttAvailable;
+  final bool ttsAvailable;
+  final bool isListening;
+  final bool isSpeaking;
+  final String liveTranscript;
 
-  bool get isBusy => queueStatus == CommunicationQueueStatus.queued || queueStatus == CommunicationQueueStatus.searching;
+  bool get isBusy =>
+      queueStatus == CommunicationQueueStatus.queued ||
+      queueStatus == CommunicationQueueStatus.searching;
 
   CommunicationState copyWith({
     CommunicationConnectionStatus? connectionStatus,
@@ -181,6 +203,11 @@ class CommunicationState {
     bool? recordingConsent,
     bool? isMuted,
     String? callSignalStatus,
+    bool? sttAvailable,
+    bool? ttsAvailable,
+    bool? isListening,
+    bool? isSpeaking,
+    String? liveTranscript,
   }) {
     return CommunicationState(
       connectionStatus: connectionStatus ?? this.connectionStatus,
@@ -199,6 +226,11 @@ class CommunicationState {
       recordingConsent: recordingConsent ?? this.recordingConsent,
       isMuted: isMuted ?? this.isMuted,
       callSignalStatus: callSignalStatus ?? this.callSignalStatus,
+      sttAvailable: sttAvailable ?? this.sttAvailable,
+      ttsAvailable: ttsAvailable ?? this.ttsAvailable,
+      isListening: isListening ?? this.isListening,
+      isSpeaking: isSpeaking ?? this.isSpeaking,
+      liveTranscript: liveTranscript ?? this.liveTranscript,
     );
   }
 }

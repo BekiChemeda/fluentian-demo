@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../core/realtime/webrtc_call_service.dart';
@@ -31,6 +33,8 @@ class CommunicationController extends Notifier<CommunicationState> {
   int _reconnectAttempts = 0;
   bool _reconnectScheduled = false;
   final WebRtcCallService _webRtc = WebRtcCallService();
+  final stt.SpeechToText _speechToText = stt.SpeechToText();
+  final FlutterTts _flutterTts = FlutterTts();
   final Set<int> _seenMessageIds = <int>{};
   final Queue<int> _seenMessageOrder = ListQueue<int>();
 
@@ -41,6 +45,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       _channel?.sink.close();
       _phraseTimer?.cancel();
       _heartbeatTimer?.cancel();
+      unawaited(_speechToText.cancel());
+      unawaited(_flutterTts.stop());
       unawaited(_webRtc.dispose());
     });
     return const CommunicationState();
@@ -50,7 +56,35 @@ class CommunicationController extends Notifier<CommunicationState> {
       ref.read(communicationRepositoryProvider);
 
   Future<void> bootstrap() async {
+    await _initializeSpeechFeatures();
     await _loadStats();
+  }
+
+  Future<void> _initializeSpeechFeatures() async {
+    var sttReady = false;
+    var ttsReady = false;
+
+    try {
+      sttReady = await _speechToText.initialize(
+        onError: (_) {
+          state = state.copyWith(isListening: false);
+        },
+      );
+    } catch (_) {
+      sttReady = false;
+    }
+
+    try {
+      await _flutterTts.setLanguage('fr-FR');
+      await _flutterTts.setSpeechRate(0.46);
+      await _flutterTts.setPitch(1.0);
+      await _flutterTts.awaitSpeakCompletion(true);
+      ttsReady = true;
+    } catch (_) {
+      ttsReady = false;
+    }
+
+    state = state.copyWith(sttAvailable: sttReady, ttsAvailable: ttsReady);
   }
 
   Future<void> _loadStats() async {
@@ -133,6 +167,8 @@ class CommunicationController extends Notifier<CommunicationState> {
       return;
     }
 
+    state = state.copyWith(liveTranscript: '');
+
     // Prefer the websocket path for active sessions to keep text/audio chat on one realtime channel.
     if (_channel != null && state.phase == CommunicationPhase.session) {
       _sendSocketEvent(type: 'CHAT_MESSAGE', payload: {'body': text});
@@ -158,6 +194,61 @@ class CommunicationController extends Notifier<CommunicationState> {
         ),
       ],
     );
+  }
+
+  Future<void> startListeningForMessage() async {
+    if (!state.sttAvailable || state.isListening) {
+      return;
+    }
+
+    state = state.copyWith(isListening: true);
+    await _speechToText.listen(
+      listenFor: const Duration(seconds: 45),
+      pauseFor: const Duration(seconds: 4),
+      listenOptions: stt.SpeechListenOptions(partialResults: true),
+      onResult: (result) {
+        final words = result.recognizedWords.trim();
+        state = state.copyWith(
+          liveTranscript: words,
+          isListening: !result.finalResult,
+        );
+      },
+    );
+  }
+
+  Future<void> stopListeningForMessage() async {
+    await _speechToText.stop();
+    state = state.copyWith(isListening: false);
+  }
+
+  Future<void> speakMessage(String text) async {
+    final message = text.trim();
+    if (!state.ttsAvailable || message.isEmpty) {
+      return;
+    }
+
+    state = state.copyWith(isSpeaking: true);
+    try {
+      await _flutterTts.stop();
+      await _flutterTts.speak(message);
+    } finally {
+      state = state.copyWith(isSpeaking: false);
+    }
+  }
+
+  Future<void> speakLatestPartnerMessage() async {
+    CommunicationMessage? latestPartnerMessage;
+    for (final message in state.messages.reversed) {
+      if (!message.isMe && message.body.trim().isNotEmpty) {
+        latestPartnerMessage = message;
+        break;
+      }
+    }
+
+    if (latestPartnerMessage == null) {
+      return;
+    }
+    await speakMessage(latestPartnerMessage.body);
   }
 
   Future<void> refreshMessages() async {

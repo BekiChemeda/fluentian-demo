@@ -9,15 +9,36 @@ class CommunicationScreen extends ConsumerStatefulWidget {
   const CommunicationScreen({super.key});
 
   @override
-  ConsumerState<CommunicationScreen> createState() => _CommunicationScreenState();
+  ConsumerState<CommunicationScreen> createState() =>
+      _CommunicationScreenState();
 }
 
 class _CommunicationScreenState extends ConsumerState<CommunicationScreen> {
   final _messageController = TextEditingController();
+  ProviderSubscription<CommunicationState>? _communicationSubscription;
 
   @override
   void initState() {
     super.initState();
+    _communicationSubscription = ref.listenManual(
+      communicationControllerProvider,
+      (previous, next) {
+        final transcript = next.liveTranscript.trim();
+        final shouldSync = next.isListening ||
+            ((previous?.isListening ?? false) &&
+                !next.isListening &&
+                transcript.isNotEmpty);
+
+        if (!shouldSync || _messageController.text == transcript) {
+          return;
+        }
+
+        _messageController.value = TextEditingValue(
+          text: transcript,
+          selection: TextSelection.collapsed(offset: transcript.length),
+        );
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(communicationControllerProvider.notifier).bootstrap();
     });
@@ -25,6 +46,7 @@ class _CommunicationScreenState extends ConsumerState<CommunicationScreen> {
 
   @override
   void dispose() {
+    _communicationSubscription?.close();
     _messageController.dispose();
     super.dispose();
   }
@@ -53,12 +75,24 @@ class _CommunicationScreenState extends ConsumerState<CommunicationScreen> {
           child: switch (state.phase) {
             CommunicationPhase.match => _MatchPane(
                 state: state,
-                onJoin: () => ref.read(communicationControllerProvider.notifier).joinQueue(),
-                onLeave: () => ref.read(communicationControllerProvider.notifier).leaveQueue(),
-                onModeChanged: (value) => ref.read(communicationControllerProvider.notifier).updateSelectedMode(value),
-                onIntentChanged: (value) => ref.read(communicationControllerProvider.notifier).updateSelectedIntent(value),
-                onLevelChanged: (value) => ref.read(communicationControllerProvider.notifier).updateSelectedLevel(value),
-                onConsentChanged: (value) => ref.read(communicationControllerProvider.notifier).updateRecordingConsent(value),
+                onJoin: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .joinQueue(),
+                onLeave: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .leaveQueue(),
+                onModeChanged: (value) => ref
+                    .read(communicationControllerProvider.notifier)
+                    .updateSelectedMode(value),
+                onIntentChanged: (value) => ref
+                    .read(communicationControllerProvider.notifier)
+                    .updateSelectedIntent(value),
+                onLevelChanged: (value) => ref
+                    .read(communicationControllerProvider.notifier)
+                    .updateSelectedLevel(value),
+                onConsentChanged: (value) => ref
+                    .read(communicationControllerProvider.notifier)
+                    .updateRecordingConsent(value),
               ),
             CommunicationPhase.session => _SessionPane(
                 state: state,
@@ -68,7 +102,9 @@ class _CommunicationScreenState extends ConsumerState<CommunicationScreen> {
                   if (text.isEmpty) {
                     return;
                   }
-                  ref.read(communicationControllerProvider.notifier).sendTextMessage(text);
+                  ref
+                      .read(communicationControllerProvider.notifier)
+                      .sendTextMessage(text);
                   _messageController.clear();
                 },
                 onEnd: () {
@@ -76,18 +112,46 @@ class _CommunicationScreenState extends ConsumerState<CommunicationScreen> {
                   if (partner == null) {
                     return;
                   }
-                  ref.read(communicationControllerProvider.notifier).endSession(endedBy: partner.id);
+                  ref
+                      .read(communicationControllerProvider.notifier)
+                      .endSession(endedBy: partner.id);
                 },
-                onRefresh: () => ref.read(communicationControllerProvider.notifier).refreshMessages(),
-                onInviteCall: () => ref.read(communicationControllerProvider.notifier).inviteCall(),
-                onToggleMute: () => ref.read(communicationControllerProvider.notifier).toggleMute(),
-                onHangup: () => ref.read(communicationControllerProvider.notifier).hangupCall(),
+                onRefresh: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .refreshMessages(),
+                onInviteCall: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .inviteCall(),
+                onToggleMute: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .toggleMute(),
+                onHangup: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .hangupCall(),
+                onStartListening: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .startListeningForMessage(),
+                onStopListening: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .stopListeningForMessage(),
+                onSpeakLatest: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .speakLatestPartnerMessage(),
+                onSpeakMessage: (text) => ref
+                    .read(communicationControllerProvider.notifier)
+                    .speakMessage(text),
               ),
             CommunicationPhase.postSession => _PostSessionPane(
                 state: state,
-                onReport: () => ref.read(communicationControllerProvider.notifier).reportCurrentPartner('other'),
-                onBlock: () => ref.read(communicationControllerProvider.notifier).blockCurrentPartner('session_safety'),
-                onRetry: () => ref.read(communicationControllerProvider.notifier).joinQueue(),
+                onReport: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .reportCurrentPartner('other'),
+                onBlock: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .blockCurrentPartner('session_safety'),
+                onRetry: () => ref
+                    .read(communicationControllerProvider.notifier)
+                    .joinQueue(),
               ),
           },
         ),
@@ -122,7 +186,8 @@ class _MatchPane extends StatelessWidget {
       children: [
         _SectionCard(
           title: 'Realtime Match Lab',
-          subtitle: 'Inspired by live pairing UIs with visible queue state and partner readiness signals.',
+          subtitle:
+              'Inspired by live pairing UIs with visible queue state and partner readiness signals.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -178,7 +243,8 @@ class _MatchPane extends StatelessWidget {
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Audio recording consent'),
-                subtitle: const Text('Recording activates only when both users consent.'),
+                subtitle: const Text(
+                    'Recording activates only when both users consent.'),
                 value: state.recordingConsent,
                 onChanged: onConsentChanged,
               ),
@@ -186,7 +252,9 @@ class _MatchPane extends StatelessWidget {
               Text(
                 state.errorMessage ?? state.waitingPhrase,
                 style: TextStyle(
-                  color: state.errorMessage == null ? AppColors.textMuted : AppColors.warning,
+                  color: state.errorMessage == null
+                      ? AppColors.textMuted
+                      : AppColors.warning,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -197,7 +265,8 @@ class _MatchPane extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 const SizedBox(height: 10),
-                const Text('Queue is live. Matching by mode, intent, level, and wait-time fairness.'),
+                const Text(
+                    'Queue is live. Matching by mode, intent, level, and wait-time fairness.'),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
                   onPressed: onLeave,
@@ -244,7 +313,8 @@ class _RealtimePulsePanel extends StatelessWidget {
             tween: Tween(begin: 0.92, end: searching ? 1.08 : 1.0),
             duration: const Duration(milliseconds: 900),
             curve: Curves.easeInOut,
-            builder: (_, scale, child) => Transform.scale(scale: scale, child: child),
+            builder: (_, scale, child) =>
+                Transform.scale(scale: scale, child: child),
             child: Container(
               width: 72,
               height: 72,
@@ -253,7 +323,8 @@ class _RealtimePulsePanel extends StatelessWidget {
                 color: AppColors.primary.withValues(alpha: 0.14),
                 border: Border.all(color: AppColors.primary, width: 1.2),
               ),
-              child: const Icon(Icons.radar_rounded, color: AppColors.primary, size: 34),
+              child: const Icon(Icons.radar_rounded,
+                  color: AppColors.primary, size: 34),
             ),
           ),
           const SizedBox(width: 12),
@@ -263,23 +334,28 @@ class _RealtimePulsePanel extends StatelessWidget {
               children: [
                 Text(
                   searching ? 'Searching in realtime' : 'Ready to search',
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 16),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   searching
                       ? 'Looking for a compatible partner now.'
                       : 'Select filters and enter the queue.',
-                  style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      color: AppColors.textMuted, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.bolt_rounded, size: 16, color: AppColors.primary),
+                    const Icon(Icons.bolt_rounded,
+                        size: 16, color: AppColors.primary),
                     const SizedBox(width: 4),
                     Text(
                       'Status: ${state.connectionStatus.name}',
-                      style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textMuted),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -302,6 +378,10 @@ class _SessionPane extends StatelessWidget {
     required this.onInviteCall,
     required this.onToggleMute,
     required this.onHangup,
+    required this.onStartListening,
+    required this.onStopListening,
+    required this.onSpeakLatest,
+    required this.onSpeakMessage,
   });
 
   final CommunicationState state;
@@ -312,6 +392,10 @@ class _SessionPane extends StatelessWidget {
   final VoidCallback onInviteCall;
   final VoidCallback onToggleMute;
   final VoidCallback onHangup;
+  final VoidCallback onStartListening;
+  final VoidCallback onStopListening;
+  final VoidCallback onSpeakLatest;
+  final ValueChanged<String> onSpeakMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -320,22 +404,28 @@ class _SessionPane extends StatelessWidget {
       children: [
         _SectionCard(
           title: 'Match found',
-          subtitle: partner == null ? 'Loading partner details' : 'Partner: ${partner.email} • ${partner.language ?? 'FR'}',
+          subtitle: partner == null
+              ? 'Loading partner details'
+              : 'Partner: ${partner.email} • ${partner.language ?? 'FR'}',
           child: Row(
             children: [
               CircleAvatar(
                 radius: 24,
                 backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                child: Text((partner?.email ?? 'P').characters.first.toUpperCase()),
+                child: Text(
+                    (partner?.email ?? 'P').characters.first.toUpperCase()),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(partner?.email ?? 'Partner', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    Text('XP ${partner?.xp ?? 0} • Streak ${partner?.streak ?? 0}'),
-                    Text('Session ${state.session?.sessionType ?? 'text'} • ${state.connectionStatus.name}'),
+                    Text(partner?.email ?? 'Partner',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    Text(
+                        'XP ${partner?.xp ?? 0} • Streak ${partner?.streak ?? 0}'),
+                    Text(
+                        'Session ${state.session?.sessionType ?? 'text'} • ${state.connectionStatus.name}'),
                     if ((state.session?.sessionType ?? 'text') == 'audio')
                       TextButton.icon(
                         onPressed: onInviteCall,
@@ -364,6 +454,10 @@ class _SessionPane extends StatelessWidget {
             onInviteCall: onInviteCall,
             onToggleMute: onToggleMute,
             onHangup: onHangup,
+            onStartListening: onStartListening,
+            onStopListening: onStopListening,
+            onSpeakLatest: onSpeakLatest,
+            onSpeakMessage: onSpeakMessage,
           ),
         ),
       ],
@@ -396,13 +490,16 @@ class _PostSessionPane extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Duration: ${session?.durationSeconds ?? 0} seconds', style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text('Duration: ${session?.durationSeconds ?? 0} seconds',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               Text('Mode: ${session?.sessionType ?? 'text'}'),
               Text('Recording: ${session?.recordingUrl ?? 'disabled'}'),
-              Text('Report flag: ${session?.reportFlag == true ? 'yes' : 'no'}'),
+              Text(
+                  'Report flag: ${session?.reportFlag == true ? 'yes' : 'no'}'),
               const SizedBox(height: 14),
-              const Text('How was the session?', style: TextStyle(fontWeight: FontWeight.w800)),
+              const Text('How was the session?',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -456,6 +553,10 @@ class _ChatPanel extends StatelessWidget {
     required this.onInviteCall,
     required this.onToggleMute,
     required this.onHangup,
+    required this.onStartListening,
+    required this.onStopListening,
+    required this.onSpeakLatest,
+    required this.onSpeakMessage,
   });
 
   final CommunicationState state;
@@ -467,6 +568,10 @@ class _ChatPanel extends StatelessWidget {
   final VoidCallback onInviteCall;
   final VoidCallback onToggleMute;
   final VoidCallback onHangup;
+  final VoidCallback onStartListening;
+  final VoidCallback onStopListening;
+  final VoidCallback onSpeakLatest;
+  final ValueChanged<String> onSpeakMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -488,17 +593,31 @@ class _ChatPanel extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text('Connection', style: Theme.of(context).textTheme.titleSmall),
+                      Text('Connection',
+                          style: Theme.of(context).textTheme.titleSmall),
                       if (sessionType == 'audio')
                         Padding(
                           padding: const EdgeInsets.only(left: 8),
                           child: Text(
                             state.callSignalStatus,
-                            style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontWeight: FontWeight.w700),
                           ),
                         ),
                       const Spacer(),
-                      IconButton(onPressed: onRefresh, icon: const Icon(Icons.refresh_rounded)),
+                      IconButton(
+                        tooltip: 'Read latest partner message',
+                        onPressed: state.ttsAvailable ? onSpeakLatest : null,
+                        icon: Icon(
+                          state.isSpeaking
+                              ? Icons.volume_up_rounded
+                              : Icons.record_voice_over_rounded,
+                        ),
+                      ),
+                      IconButton(
+                          onPressed: onRefresh,
+                          icon: const Icon(Icons.refresh_rounded)),
                     ],
                   ),
                   if (sessionType == 'audio')
@@ -513,7 +632,9 @@ class _ChatPanel extends StatelessWidget {
                         ),
                         OutlinedButton.icon(
                           onPressed: onToggleMute,
-                          icon: Icon(state.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded),
+                          icon: Icon(state.isMuted
+                              ? Icons.mic_off_rounded
+                              : Icons.mic_rounded),
                           label: Text(state.isMuted ? 'Unmute' : 'Mute'),
                         ),
                         FilledButton.tonalIcon(
@@ -533,20 +654,45 @@ class _ChatPanel extends StatelessWidget {
                             itemBuilder: (context, index) {
                               final message = messages[index];
                               return Align(
-                                alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
+                                alignment: message.isMe
+                                    ? Alignment.centerRight
+                                    : Alignment.centerLeft,
                                 child: Container(
-                                  margin: const EdgeInsets.symmetric(vertical: 6),
+                                  margin:
+                                      const EdgeInsets.symmetric(vertical: 6),
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: message.isMe ? AppColors.primary.withValues(alpha: 0.12) : AppColors.surfaceMuted,
+                                    color: message.isMe
+                                        ? AppColors.primary
+                                            .withValues(alpha: 0.12)
+                                        : AppColors.surfaceMuted,
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Text(message.author, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                      Text(message.author,
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w700)),
                                       const SizedBox(height: 4),
                                       Text(message.body),
+                                      if (!message.isMe)
+                                        Align(
+                                          alignment: Alignment.centerRight,
+                                          child: IconButton(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            tooltip: 'Read message',
+                                            onPressed: state.ttsAvailable
+                                                ? () =>
+                                                    onSpeakMessage(message.body)
+                                                : null,
+                                            icon: const Icon(
+                                                Icons.volume_up_rounded,
+                                                size: 18),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -560,11 +706,29 @@ class _ChatPanel extends StatelessWidget {
                       Expanded(
                         child: TextField(
                           controller: messageController,
-                          decoration: const InputDecoration(hintText: 'Write in French...'),
+                          decoration: const InputDecoration(
+                              hintText: 'Write in French...'),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      FilledButton(onPressed: onSend, child: const Text('Send')),
+                      IconButton.filledTonal(
+                        tooltip: state.isListening
+                            ? 'Stop listening'
+                            : 'Voice input',
+                        onPressed: state.sttAvailable
+                            ? (state.isListening
+                                ? onStopListening
+                                : onStartListening)
+                            : null,
+                        icon: Icon(
+                          state.isListening
+                              ? Icons.stop_circle_outlined
+                              : Icons.mic_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                          onPressed: onSend, child: const Text('Send')),
                     ],
                   ),
                 ],
@@ -597,7 +761,9 @@ class _StatsCard extends StatelessWidget {
                 _Metric(label: 'Yesterday', value: '${stats!.yesterday}s'),
                 _Metric(label: '7 days', value: '${stats!.weekly}s'),
                 _Metric(label: 'Sessions', value: '${stats!.totalSessions}'),
-                _Metric(label: 'Avg duration', value: stats!.averageSessionDuration.toStringAsFixed(1)),
+                _Metric(
+                    label: 'Avg duration',
+                    value: stats!.averageSessionDuration.toStringAsFixed(1)),
               ],
             ),
     );
@@ -624,7 +790,9 @@ class _Metric extends StatelessWidget {
         children: [
           Text(label, style: const TextStyle(color: AppColors.textMuted)),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         ],
       ),
     );
@@ -632,7 +800,8 @@ class _Metric extends StatelessWidget {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.subtitle, required this.child});
+  const _SectionCard(
+      {required this.title, required this.subtitle, required this.child});
 
   final String title;
   final String subtitle;
@@ -645,12 +814,17 @@ class _SectionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [BoxShadow(blurRadius: 30, offset: Offset(0, 12), color: Color(0x14000000))],
+        boxShadow: const [
+          BoxShadow(
+              blurRadius: 30, offset: Offset(0, 12), color: Color(0x14000000))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
           Text(subtitle, style: const TextStyle(color: AppColors.textMuted)),
           const SizedBox(height: 16),
