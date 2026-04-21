@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 from typing import Annotated
 
@@ -24,6 +25,8 @@ from app.services.realtime_service import (
     leave_queue,
     process_matchmaking_once,
     publish_user_event,
+    remember_event_id,
+    has_seen_event_id,
     refresh_heartbeat,
     set_presence,
 )
@@ -118,7 +121,7 @@ async def _resolve_ws_user(token: str) -> User:
         return user
 
 
-async def _forward_pubsub_messages(websocket: WebSocket, user_id: int) -> None:
+async def _bridge_redis_messages(user_id: int, queue: asyncio.Queue[dict]) -> None:
     settings = get_settings()
     channel = f"{settings.redis_user_events_prefix}:{user_id}"
     try:
@@ -126,32 +129,50 @@ async def _forward_pubsub_messages(websocket: WebSocket, user_id: int) -> None:
         pubsub = redis.pubsub()
         await pubsub.subscribe(channel)
         try:
-            while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if not message:
-                    await asyncio.sleep(0.05)
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
                     continue
 
                 raw_data = message.get("data")
                 if raw_data is None:
                     continue
-
                 if isinstance(raw_data, bytes):
                     raw_data = raw_data.decode("utf-8")
+
                 try:
                     event = json.loads(raw_data)
                 except (TypeError, json.JSONDecodeError):
                     continue
 
-                await websocket.send_json(event)
+                payload = event.get("payload") if isinstance(event, dict) else None
+                if not isinstance(payload, dict):
+                    continue
+
+                event_id = payload.get("_event_id")
+                if isinstance(event_id, str) and event_id:
+                    if has_seen_event_id(event_id):
+                        continue
+                    remember_event_id(event_id)
+
+                queue.put_nowait(event)
         finally:
             await pubsub.unsubscribe(channel)
             await pubsub.close()
     except RedisConnectionError:
-        queue = get_event_queue(user_id)
+        return
+
+
+async def _forward_pubsub_messages(websocket: WebSocket, user_id: int) -> None:
+    queue = get_event_queue(user_id)
+    bridge_task = asyncio.create_task(_bridge_redis_messages(user_id, queue))
+    try:
         while True:
             event = await queue.get()
             await websocket.send_json(event)
+    finally:
+        bridge_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await bridge_task
 
 
 @router.websocket("/ws/match")
@@ -181,13 +202,12 @@ async def match_socket(websocket: WebSocket) -> None:
                 queue_payload = QueueJoinPayload.model_validate(payload)
                 async with AsyncSessionLocal() as db:
                     await join_queue(user, queue_payload)
-                    matches = await process_matchmaking_once(db)
+                    await process_matchmaking_once(db)
                 await websocket.send_json(
                     build_event(
                         "MATCH_PROGRESS",
                         {
                             "status": "searching",
-                            "matches_created": matches,
                             "queue_joined": True,
                         },
                     ).model_dump(mode="json")
@@ -215,37 +235,37 @@ async def match_socket(websocket: WebSocket) -> None:
             }:
                 async with AsyncSessionLocal() as db:
                     peer_id = await get_active_peer_id(db, user.id)
-                if peer_id is None:
-                    await websocket.send_json(
-                        build_event(
-                            "ERROR_EVENT",
-                            {
-                                "reason": "no_active_session",
-                                "event_type": event_type,
-                            },
-                        ).model_dump(mode="json")
-                    )
-                    continue
+                    if peer_id is None:
+                        await websocket.send_json(
+                            build_event(
+                                "ERROR_EVENT",
+                                {
+                                    "reason": "no_active_session",
+                                    "event_type": event_type,
+                                },
+                            ).model_dump(mode="json")
+                        )
+                        continue
 
-                await publish_user_event(
-                    peer_id,
-                    build_event(
-                        event_type,
-                        {
-                            "from_user_id": user.id,
-                            "session_signal": payload,
-                        },
-                    ),
-                )
-                if event_type == "CALL_INVITE":
-                    await create_notification(
-                        db,
-                        user_id=peer_id,
-                        event_type="call_invite",
-                        title="Incoming audio call",
-                        body=f"{user.email} invited you to an audio session.",
-                        metadata={"from_user_id": user.id},
+                    await publish_user_event(
+                        peer_id,
+                        build_event(
+                            event_type,
+                            {
+                                "from_user_id": user.id,
+                                "session_signal": payload,
+                            },
+                        ),
                     )
+                    if event_type == "CALL_INVITE":
+                        await create_notification(
+                            db,
+                            user_id=peer_id,
+                            event_type="call_invite",
+                            title="Incoming audio call",
+                            body=f"{user.email} invited you to an audio session.",
+                            metadata={"from_user_id": user.id},
+                        )
             elif event_type == "USER_DISCONNECTED":
                 await set_presence(user.id, "offline")
             else:
@@ -263,6 +283,8 @@ async def match_socket(websocket: WebSocket) -> None:
             await cleanup_disconnected_user(db, user.id)
     finally:
         forward_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await forward_task
 
 
 @router.post("/session/end", response_model=SessionSummaryResponse)

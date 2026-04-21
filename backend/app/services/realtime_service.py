@@ -1,4 +1,6 @@
 import json
+import uuid
+from collections import deque
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, or_, select
@@ -28,6 +30,8 @@ from app.services.safety_service import is_user_blocked_pair
 
 _CEFR_ORDER = {"A1": 1, "A2": 2, "B1": 3, "B2": 4, "C1": 5, "C2": 6}
 _REDIS_AVAILABLE = True
+_RECENT_EVENT_IDS: set[str] = set()
+_RECENT_EVENT_ID_ORDER: deque[str] = deque()
 
 
 def _normalize_language(value: str) -> str:
@@ -69,11 +73,44 @@ def _redis_enabled() -> bool:
     return _REDIS_AVAILABLE
 
 
+def _event_id(payload: dict) -> str:
+    event_id = payload.get("_event_id")
+    if isinstance(event_id, str) and event_id:
+        return event_id
+    event_id = uuid.uuid4().hex
+    payload["_event_id"] = event_id
+    return event_id
+
+
+def _remember_event_id(event_id: str) -> None:
+    if event_id in _RECENT_EVENT_IDS:
+        return
+    _RECENT_EVENT_IDS.add(event_id)
+    _RECENT_EVENT_ID_ORDER.append(event_id)
+    while len(_RECENT_EVENT_ID_ORDER) > 4096:
+        expired = _RECENT_EVENT_ID_ORDER.popleft()
+        _RECENT_EVENT_IDS.discard(expired)
+
+
+def has_seen_event_id(event_id: str) -> bool:
+    return event_id in _RECENT_EVENT_IDS
+
+
+def remember_event_id(event_id: str) -> None:
+    _remember_event_id(event_id)
+
+
 def build_event(event_type: str, payload: dict) -> RealtimeEnvelope:
     return RealtimeEnvelope(type=event_type, timestamp=datetime.now(UTC), payload=payload)
 
 
 async def publish_user_event(user_id: int, event: RealtimeEnvelope) -> None:
+    event_id = _event_id(event.payload)
+    _remember_event_id(event_id)
+
+    local_queue = get_event_queue(user_id)
+    local_queue.put_nowait(event.model_dump(mode="json"))
+
     if _redis_enabled():
         try:
             redis = get_redis_client()
@@ -81,9 +118,6 @@ async def publish_user_event(user_id: int, event: RealtimeEnvelope) -> None:
             return
         except RedisConnectionError:
             _mark_redis_unavailable()
-
-    queue = get_event_queue(user_id)
-    queue.put_nowait(event.model_dump(mode="json"))
 
 
 async def _write_presence_mapping(user_id: int, mapping: dict[str, str]) -> None:

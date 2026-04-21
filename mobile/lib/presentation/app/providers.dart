@@ -26,23 +26,10 @@ final tokenStoreProvider = Provider<TokenStore>((ref) => TokenStore());
 const String _defaultApiBaseUrl = 'http://165.22.149.133:8000';
 
 String _resolveBaseUrl() {
-  const String configuredBaseUrl = String.fromEnvironment(
+  return const String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: _defaultApiBaseUrl,
   );
-  if (configuredBaseUrl.isNotEmpty) {
-    return configuredBaseUrl;
-  }
-
-  if (kIsWeb) {
-    return 'http://127.0.0.1:8000';
-  }
-
-  if (defaultTargetPlatform == TargetPlatform.android) {
-    return 'http://10.0.2.2:8000';
-  }
-
-  return 'http://127.0.0.1:8000';
 }
 
 final apiClientProvider = Provider<ApiClient>((ref) {

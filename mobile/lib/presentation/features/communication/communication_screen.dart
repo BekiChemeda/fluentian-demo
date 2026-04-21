@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../ui_lab/audio_call_screen.dart';
 import 'communication_controller.dart';
 import 'communication_state.dart';
 
@@ -339,18 +338,9 @@ class _SessionPane extends StatelessWidget {
                     Text('Session ${state.session?.sessionType ?? 'text'} • ${state.connectionStatus.name}'),
                     if ((state.session?.sessionType ?? 'text') == 'audio')
                       TextButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => AudioCallScreen(
-                                isAi: false,
-                                peerLabel: partner?.email ?? 'Partner',
-                              ),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.record_voice_over_rounded),
-                        label: const Text('Open voice room'),
+                        onPressed: onInviteCall,
+                        icon: const Icon(Icons.call_rounded),
+                        label: const Text('Start voice chat'),
                       ),
                   ],
                 ),
@@ -480,98 +470,108 @@ class _ChatPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _SectionCard(
-      title: sessionType == 'audio' ? 'Live call' : 'Text chat',
-      subtitle: sessionType == 'audio'
-          ? 'Signaling active. Use invite/mute/hangup controls while media transport negotiates.'
-          : 'Text conversation is routed through the session chat endpoints.',
-      child: SizedBox(
-        height: 420,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Text('Connection', style: Theme.of(context).textTheme.titleSmall),
-                if (sessionType == 'audio')
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: Text(
-                      state.callSignalStatus,
-                      style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                const Spacer(),
-                IconButton(onPressed: onRefresh, icon: const Icon(Icons.refresh_rounded)),
-              ],
-            ),
-            if (sessionType == 'audio')
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return _SectionCard(
+            title: sessionType == 'audio' ? 'Live call' : 'Text chat',
+            subtitle: sessionType == 'audio'
+                ? 'WebRTC signaling is active. Use invite/mute/hangup while the peer connection negotiates.'
+                : 'Text conversation is routed through the session chat endpoints.',
+            child: SizedBox(
+              height: constraints.maxHeight,
+              child: Column(
                 children: [
-                  OutlinedButton.icon(
-                    onPressed: onInviteCall,
-                    icon: const Icon(Icons.call_rounded),
-                    label: const Text('Invite'),
+                  Row(
+                    children: [
+                      Text('Connection', style: Theme.of(context).textTheme.titleSmall),
+                      if (sessionType == 'audio')
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: Text(
+                            state.callSignalStatus,
+                            style: const TextStyle(color: AppColors.textMuted, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      const Spacer(),
+                      IconButton(onPressed: onRefresh, icon: const Icon(Icons.refresh_rounded)),
+                    ],
                   ),
-                  OutlinedButton.icon(
-                    onPressed: onToggleMute,
-                    icon: Icon(state.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded),
-                    label: Text(state.isMuted ? 'Unmute' : 'Mute'),
+                  if (sessionType == 'audio')
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: onInviteCall,
+                          icon: const Icon(Icons.call_rounded),
+                          label: const Text('Invite'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: onToggleMute,
+                          icon: Icon(state.isMuted ? Icons.mic_off_rounded : Icons.mic_rounded),
+                          label: Text(state.isMuted ? 'Unmute' : 'Mute'),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: onHangup,
+                          icon: const Icon(Icons.call_end_rounded),
+                          label: const Text('Hang up'),
+                        ),
+                      ],
+                    ),
+                  if (sessionType == 'audio') const SizedBox(height: 8),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: messages.isEmpty
+                        ? const Center(child: Text('No messages yet'))
+                        : ListView.builder(
+                            itemCount: messages.length,
+                            itemBuilder: (context, index) {
+                              final message = messages[index];
+                              return Align(
+                                alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 6),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: message.isMe ? AppColors.primary.withValues(alpha: 0.12) : AppColors.surfaceMuted,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(message.author, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                      const SizedBox(height: 4),
+                                      Text(message.body),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                   ),
-                  FilledButton.tonalIcon(
-                    onPressed: onHangup,
-                    icon: const Icon(Icons.call_end_rounded),
-                    label: const Text('Hang up'),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: messageController,
+                          decoration: const InputDecoration(hintText: 'Write in French...'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(onPressed: onSend, child: const Text('Send')),
+                    ],
                   ),
                 ],
               ),
-            if (sessionType == 'audio') const SizedBox(height: 8),
-            const SizedBox(height: 8),
-            Expanded(
-              child: messages.isEmpty
-                  ? const Center(child: Text('No messages yet'))
-                  : ListView.builder(
-                      itemCount: messages.length,
-                      itemBuilder: (context, index) {
-                        final message = messages[index];
-                        return Align(
-                          alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: message.isMe ? AppColors.primary.withValues(alpha: 0.12) : AppColors.surfaceMuted,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(message.author, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 4),
-                                Text(message.body),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: messageController,
-                    decoration: const InputDecoration(hintText: 'Write in French...'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(onPressed: onSend, child: const Text('Send')),
-              ],
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

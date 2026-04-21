@@ -1,15 +1,52 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
-typedef IceCandidateCallback = Future<void> Function(Map<String, dynamic> candidate);
+typedef IceCandidateCallback = Future<void> Function(
+    Map<String, dynamic> candidate);
 
 class WebRtcCallService {
-  static const Map<String, dynamic> _iceConfig = {
-    'iceServers': [
+  static Map<String, dynamic> _buildIceConfig() {
+    final servers = <Map<String, dynamic>>[
       {'urls': 'stun:stun.l.google.com:19302'},
-    ],
-  };
+    ];
+
+    const configuredServers = String.fromEnvironment(
+      'WEBRTC_ICE_SERVERS_JSON',
+      defaultValue: '',
+    );
+    if (configuredServers.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(configuredServers);
+        if (decoded is List) {
+          for (final item in decoded) {
+            if (item is Map) {
+              servers.add(
+                  item.map((key, value) => MapEntry(key.toString(), value)));
+            }
+          }
+        } else if (decoded is Map) {
+          servers.add(
+              decoded.map((key, value) => MapEntry(key.toString(), value)));
+        }
+      } catch (_) {
+        // Keep the default STUN server if the JSON is invalid.
+      }
+    }
+
+    final config = <String, dynamic>{'iceServers': servers};
+
+    const transportPolicy = String.fromEnvironment(
+      'WEBRTC_ICE_TRANSPORT_POLICY',
+      defaultValue: '',
+    );
+    if (transportPolicy.isNotEmpty) {
+      config['iceTransportPolicy'] = transportPolicy;
+    }
+
+    return config;
+  }
 
   RTCPeerConnection? _peerConnection;
   MediaStream? _localStream;
@@ -17,9 +54,10 @@ class WebRtcCallService {
 
   bool get isReady => _peerConnection != null;
 
-  Future<void> initialize({required IceCandidateCallback onIceCandidate}) async {
+  Future<void> initialize(
+      {required IceCandidateCallback onIceCandidate}) async {
     _onIceCandidate = onIceCandidate;
-    _peerConnection ??= await createPeerConnection(_iceConfig);
+    _peerConnection ??= await createPeerConnection(_buildIceConfig());
 
     _peerConnection?.onIceCandidate = (candidate) {
       final cb = _onIceCandidate;
@@ -36,23 +74,39 @@ class WebRtcCallService {
     };
 
     _peerConnection?.onConnectionState = (_) {};
+
+    if (_localStream != null) {
+      await _attachLocalStreamToPeer();
+    }
   }
 
-  Future<void> ensureAudioTrack() async {
-    if (_localStream != null) {
-      return;
-    }
-
-    final stream = await navigator.mediaDevices.getUserMedia({'audio': true, 'video': false});
-    _localStream = stream;
+  Future<void> _attachLocalStreamToPeer() async {
     final peer = _peerConnection;
-    if (peer == null) {
+    final stream = _localStream;
+    if (peer == null || stream == null) {
       return;
     }
 
     for (final track in stream.getAudioTracks()) {
-      await peer.addTrack(track, stream);
+      final alreadyAttached = (await peer.getSenders()).any(
+        (sender) => sender.track?.id == track.id,
+      );
+      if (!alreadyAttached) {
+        await peer.addTrack(track, stream);
+      }
     }
+  }
+
+  Future<void> ensureAudioTrack() async {
+    if (_localStream != null) {
+      await _attachLocalStreamToPeer();
+      return;
+    }
+
+    final stream = await navigator.mediaDevices
+        .getUserMedia({'audio': true, 'video': false});
+    _localStream = stream;
+    await _attachLocalStreamToPeer();
   }
 
   Future<Map<String, dynamic>> createOffer() async {
@@ -70,7 +124,8 @@ class WebRtcCallService {
     };
   }
 
-  Future<Map<String, dynamic>> createAnswer(Map<String, dynamic> remoteOffer) async {
+  Future<Map<String, dynamic>> createAnswer(
+      Map<String, dynamic> remoteOffer) async {
     final peer = _peerConnection;
     if (peer == null) {
       throw StateError('WebRTC peer connection not initialized');

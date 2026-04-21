@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../features/communication/communication_screen.dart';
-import '../features/community/cultural_exchange_screen.dart';
 import '../features/dashboard/dashboard_screen.dart';
-import '../features/delf/delf_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../roadmap/roadmap_screen.dart';
+import '../features/more/more_screen.dart';
 
 class RootScaffold extends StatefulWidget {
   const RootScaffold({super.key});
@@ -20,10 +19,9 @@ class _RootScaffoldState extends State<RootScaffold> {
   final _screens = const [
     RoadmapScreen(),
     DashboardScreen(),
-    CulturalExchangeScreen(),
     CommunicationScreen(),
-    DelfScreen(),
     ProfileScreen(),
+    MoreScreen(),
   ];
 
   @override
@@ -41,13 +39,10 @@ class _RootScaffoldState extends State<RootScaffold> {
           NavigationDestination(
               icon: Icon(Icons.school_rounded), label: 'Dashboard'),
           NavigationDestination(
-              icon: Icon(Icons.public_rounded), label: 'Cultural'),
-          NavigationDestination(
               icon: Icon(Icons.forum_rounded), label: 'Communication'),
-            NavigationDestination(
-              icon: Icon(Icons.assignment_rounded), label: 'DELF'),
           NavigationDestination(
               icon: Icon(Icons.person_rounded), label: 'Profile'),
+          NavigationDestination(icon: Icon(Icons.more_horiz_rounded), label: 'More'),
         ],
       ),
     );
