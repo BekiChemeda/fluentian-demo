@@ -1,9 +1,7 @@
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/lesson_model.dart';
@@ -105,16 +103,6 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
                         Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => LessonPlayerScreen(lessonId: lesson.id)),
                         );
-                      },
-                      onComplete: () async {
-                        await ref.read(completionProvider.notifier).completeLesson(lesson.id, 100);
-                        _confettiController.play();
-                        if (context.mounted) {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Great work! +${lesson.xpReward} XP')),
-                          );
-                        }
                       },
                     );
                   },
@@ -580,13 +568,6 @@ class _RoadmapFromSample extends StatelessWidget {
                 context: context,
                 lesson: lesson,
                 onStart: () {},
-                onComplete: () async {
-                  await onCompleteLesson(lesson.id);
-                  confettiController.play();
-                  if (context.mounted) {
-                    Navigator.of(context).pop();
-                  }
-                },
               );
             },
             onToggleUnit: onToggleUnit,
@@ -609,116 +590,67 @@ void _openLessonSheet({
   required BuildContext context,
   required RoadmapLessonView lesson,
   required VoidCallback onStart,
-  required Future<void> Function() onComplete,
 }) {
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (_) => _LessonSheet(lesson: lesson, onStart: onStart, onComplete: onComplete),
+    builder: (_) => _LessonSheet(lesson: lesson, onStart: onStart),
   );
 }
 
-class _LessonSheet extends HookWidget {
+class _LessonSheet extends StatelessWidget {
   const _LessonSheet({
     required this.lesson,
     required this.onStart,
-    required this.onComplete,
   });
 
   final RoadmapLessonView lesson;
   final VoidCallback onStart;
-  final Future<void> Function() onComplete;
 
   @override
   Widget build(BuildContext context) {
-    final tries = useState(0);
-    final shakeController = useAnimationController(duration: const Duration(milliseconds: 420));
-    final reducedMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-
-    final shakeCurve = CurvedAnimation(parent: shakeController, curve: Curves.elasticIn);
-
-    Future<void> runIncorrectFeedback() async {
-      tries.value += 1;
-      if (!reducedMotion) {
-        await shakeController.forward(from: 0);
-      }
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Not quite. Review and try again.')),
-        );
-      }
-    }
-
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: AnimatedBuilder(
-        animation: shakeCurve,
-        builder: (context, child) {
-          final shake = math.sin(shakeCurve.value * math.pi * 3) * 8;
-          return Transform.translate(offset: Offset(shake, 0), child: child);
-        },
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(lesson.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 8),
-                Text(
-                  lesson.description,
-                  style: const TextStyle(color: Color(0xFF5A6778), fontWeight: FontWeight.w700),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(lesson.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              Text(
+                lesson.description,
+                style: const TextStyle(color: Color(0xFF5A6778), fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEDF9F0),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEDF9F0),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '+${lesson.xpReward} XP reward',
-                        style: const TextStyle(color: Color(0xFF168A3C), fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text('Attempts: ${tries.value}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ],
+                child: Text(
+                  '+${lesson.xpReward} XP reward',
+                  style: const TextStyle(color: Color(0xFF168A3C), fontWeight: FontWeight.w800),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: runIncorrectFeedback,
-                        child: const Text('Simulate Incorrect'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: lesson.completed ? null : onComplete,
-                        child: const Text('Mark Complete'),
-                      ),
-                    ),
-                  ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    onStart();
+                  },
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Continue'),
                 ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                    onPressed: onStart,
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    label: const Text('Open Lesson Player'),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

@@ -2,6 +2,8 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/lesson_model.dart';
@@ -28,8 +30,13 @@ class _LessonPlayerScreenState extends ConsumerState<LessonPlayerScreen>
   List<String>? _orderedTokens;
   bool _explainFabLoading = false;
   bool _explainPanelOpen = false;
+  bool _speechReady = false;
+  bool _isListening = false;
+  bool _isSpeaking = false;
 
   final Map<String, _LessonExplainData> _explainCache = {};
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  final FlutterTts _tts = FlutterTts();
 
   late final AnimationController _shakeController;
 
@@ -38,12 +45,126 @@ class _LessonPlayerScreenState extends ConsumerState<LessonPlayerScreen>
     super.initState();
     _shakeController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 300));
+    _configureSpeechTools();
   }
 
   @override
   void dispose() {
+    _speech.stop();
+    _tts.stop();
     _shakeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _configureSpeechTools() async {
+    var sttReady = false;
+    var ttsReady = false;
+
+    try {
+      sttReady = await _speech.initialize(
+        onError: (_) {
+          if (!mounted) return;
+          setState(() => _isListening = false);
+        },
+        onStatus: (status) {
+          if (!mounted) return;
+          if (status == 'notListening') {
+            setState(() => _isListening = false);
+          }
+        },
+      );
+    } catch (_) {
+      sttReady = false;
+    }
+
+    try {
+      await _tts.setLanguage('fr-FR');
+      await _tts.setSpeechRate(0.46);
+      await _tts.setPitch(1.0);
+      await _tts.awaitSpeakCompletion(true);
+      ttsReady = true;
+    } catch (_) {
+      ttsReady = false;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _speechReady = sttReady && ttsReady;
+    });
+  }
+
+  Future<void> _runDialogueSpeechAssist(_LessonBlock block) async {
+    if (block.type != _LessonBlockType.dialogue) {
+      return;
+    }
+    if (!_speechReady || _isListening || _isSpeaking) {
+      if (!_speechReady) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Speech tools are not available yet.')),
+        );
+      }
+      return;
+    }
+
+    String? promptLine;
+    for (final line in block.dialogue) {
+      if (!line.mine && line.text.trim().isNotEmpty) {
+        promptLine = line.text.trim();
+      }
+    }
+    if (promptLine == null) {
+      return;
+    }
+
+    setState(() => _isSpeaking = true);
+    try {
+      await _tts.stop();
+      await _tts.speak(promptLine);
+    } finally {
+      if (mounted) {
+        setState(() => _isSpeaking = false);
+      }
+    }
+    if (!mounted) return;
+
+    setState(() => _isListening = true);
+    await _speech.listen(
+      localeId: 'fr_FR',
+      listenOptions: stt.SpeechListenOptions(partialResults: true),
+      listenFor: const Duration(seconds: 12),
+      pauseFor: const Duration(seconds: 3),
+      onResult: (result) {
+        final spoken = result.recognizedWords.trim();
+        if (!mounted) return;
+        if (spoken.isEmpty) {
+          if (result.finalResult) {
+            setState(() => _isListening = false);
+          }
+          return;
+        }
+
+        final lower = spoken.toLowerCase();
+        String? bestChoice;
+        for (final choice in block.choices) {
+          final normalized = choice.trim().toLowerCase();
+          if (normalized == lower) {
+            bestChoice = choice;
+            break;
+          }
+          if (lower.contains(normalized) || normalized.contains(lower)) {
+            bestChoice = choice;
+          }
+        }
+
+        if (bestChoice != null) {
+          setState(() => _selected = bestChoice);
+        }
+
+        if (result.finalResult) {
+          setState(() => _isListening = false);
+        }
+      },
+    );
   }
 
   bool _evaluateBlock(_LessonBlock block) {
@@ -568,6 +689,9 @@ class _LessonPlayerScreenState extends ConsumerState<LessonPlayerScreen>
                             selectedChoice: _selected,
                             orderedTokens: _orderedTokens,
                             answerState: _state,
+                            speechReady: _speechReady,
+                            isListening: _isListening,
+                            isSpeaking: _isSpeaking,
                             onSelectChoice: (value) =>
                                 setState(() => _selected = value),
                             onReorderTokens: (newTokens) =>
@@ -578,6 +702,7 @@ class _LessonPlayerScreenState extends ConsumerState<LessonPlayerScreen>
                               blockIndex: _blockIndex,
                               inlineContext: contextText,
                             ),
+                            onPressSpeaker: () => _runDialogueSpeechAssist(block),
                           ),
                         ),
                       ),
@@ -776,18 +901,26 @@ class _BlockRenderer extends StatelessWidget {
     required this.selectedChoice,
     required this.orderedTokens,
     required this.answerState,
+    required this.speechReady,
+    required this.isListening,
+    required this.isSpeaking,
     required this.onSelectChoice,
     required this.onReorderTokens,
     required this.onInlineExplain,
+    required this.onPressSpeaker,
   });
 
   final _LessonBlock block;
   final String? selectedChoice;
   final List<String>? orderedTokens;
   final AnswerState answerState;
+  final bool speechReady;
+  final bool isListening;
+  final bool isSpeaking;
   final void Function(String value) onSelectChoice;
   final void Function(List<String> newTokens) onReorderTokens;
   final Future<void> Function(String contextText) onInlineExplain;
+  final Future<void> Function() onPressSpeaker;
 
   @override
   Widget build(BuildContext context) {
@@ -828,12 +961,19 @@ class _BlockRenderer extends StatelessWidget {
                   ),
                   IconButton(
                     tooltip: 'Speak',
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Speaking... (TTS placeholder)')));
-                    },
-                    icon: const Icon(Icons.volume_up_rounded,
-                        color: AppColors.primary),
+                    onPressed: speechReady ? onPressSpeaker : null,
+                    icon: isSpeaking
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            isListening
+                                ? Icons.mic_rounded
+                                : Icons.volume_up_rounded,
+                            color: AppColors.primary,
+                          ),
                   ),
                 ],
               ),
