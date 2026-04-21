@@ -64,7 +64,8 @@ final profileViewProvider = Provider<AsyncValue<ProfileViewData>>((ref) {
   });
 });
 
-final profileAnalyticsProvider = FutureProvider<ProfileAnalyticsData>((ref) async {
+final profileAnalyticsProvider =
+    FutureProvider<ProfileAnalyticsData>((ref) async {
   final raw = await ref.read(communicationRepositoryProvider).getUserStats();
   return ProfileAnalyticsData.fromJson(raw);
 });
@@ -101,15 +102,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget build(BuildContext context) {
     final profile = ref.watch(profileViewProvider);
     final analytics = ref.watch(profileAnalyticsProvider);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColors = isDarkMode
+        ? const [Color(0xFF0B1220), Color(0xFF121C31)]
+        : const [Color(0xFFEAFBED), Color(0xFFFFF8EE)];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFEAFBED), Color(0xFFFFF8EE)],
+            colors: backgroundColors,
           ),
         ),
         child: RefreshIndicator(
@@ -267,6 +272,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _openSettingsSheet(
       BuildContext context, ProfileViewData data) async {
+    final currentThemeMode =
+        ref.read(themeModeProvider).valueOrNull ?? ThemeMode.light;
+    var selectedThemeMode = currentThemeMode;
+
     final selected = await showModalBottomSheet<int>(
       context: context,
       showDragHandle: true,
@@ -296,6 +305,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                       )
                       .toList(),
+                ),
+                const SizedBox(height: 20),
+                const Text('Appearance',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 10),
+                StatefulBuilder(
+                  builder: (context, setState) {
+                    return SegmentedButton<ThemeMode>(
+                      segments: const [
+                        ButtonSegment(
+                          value: ThemeMode.light,
+                          label: Text('Day'),
+                          icon: Icon(Icons.light_mode_rounded),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.dark,
+                          label: Text('Night'),
+                          icon: Icon(Icons.dark_mode_rounded),
+                        ),
+                      ],
+                      selected: {selectedThemeMode},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (selection) async {
+                        final mode = selection.first;
+                        setState(() {
+                          selectedThemeMode = mode;
+                        });
+                        await ref
+                            .read(themeModeProvider.notifier)
+                            .setThemeMode(mode);
+                      },
+                    );
+                  },
                 ),
               ],
             ),
@@ -455,27 +498,53 @@ List<ProfileUnitProgress> _buildUnitProgress(List<LessonModel> lessons,
 class _ProfileLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final baseColor =
+        isDarkMode ? const Color(0xFF1A2742) : const Color(0xFFE7ECEB);
+    final highlightColor =
+        isDarkMode ? const Color(0xFF243252) : const Color(0xFFF7FAF9);
+
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
       children: [
-        _shimmerCard(height: 210),
+        _shimmerCard(
+          height: 210,
+          isDarkMode: isDarkMode,
+          baseColor: baseColor,
+          highlightColor: highlightColor,
+        ),
         const SizedBox(height: 12),
-        _shimmerCard(height: 250),
+        _shimmerCard(
+          height: 250,
+          isDarkMode: isDarkMode,
+          baseColor: baseColor,
+          highlightColor: highlightColor,
+        ),
         const SizedBox(height: 12),
-        _shimmerCard(height: 170),
+        _shimmerCard(
+          height: 170,
+          isDarkMode: isDarkMode,
+          baseColor: baseColor,
+          highlightColor: highlightColor,
+        ),
       ],
     );
   }
 
-  Widget _shimmerCard({required double height}) {
+  Widget _shimmerCard({
+    required double height,
+    required bool isDarkMode,
+    required Color baseColor,
+    required Color highlightColor,
+  }) {
     return Shimmer.fromColors(
-      baseColor: const Color(0xFFE7ECEB),
-      highlightColor: const Color(0xFFF7FAF9),
+      baseColor: baseColor,
+      highlightColor: highlightColor,
       child: Container(
         height: height,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDarkMode ? const Color(0xFF111B2E) : Colors.white,
           borderRadius: BorderRadius.circular(20),
         ),
       ),
@@ -555,7 +624,8 @@ class _AnalyticsCard extends StatelessWidget {
               const SizedBox(height: 4),
               const Text(
                 'Realtime practice trends',
-                style: TextStyle(color: Color(0xFFE5F5F8), fontWeight: FontWeight.w700),
+                style: TextStyle(
+                    color: Color(0xFFE5F5F8), fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 14),
               Wrap(
@@ -571,7 +641,8 @@ class _AnalyticsCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 'Average session: ${data.averageSessionDuration.toStringAsFixed(1)}s',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w800),
               ),
             ],
           ),
@@ -591,9 +662,15 @@ class _AnalyticsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Color(0xFFE3F6FC), fontWeight: FontWeight.w700)),
+          Text(label,
+              style: const TextStyle(
+                  color: Color(0xFFE3F6FC), fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+          Text(value,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 18)),
         ],
       ),
     );
@@ -610,7 +687,8 @@ class _AnalyticsLoading extends StatelessWidget {
       children: [
         const Text(
           'Communication Analytics',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
+          style: TextStyle(
+              color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
         ),
         const SizedBox(height: 10),
         LinearProgressIndicator(
@@ -645,7 +723,8 @@ class ProfileAnalyticsData {
       yesterdaySeconds: json['yesterday'] as int? ?? 0,
       weeklySeconds: json['weekly'] as int? ?? 0,
       totalSessions: json['total_sessions'] as int? ?? 0,
-      averageSessionDuration: (json['average_session_duration'] as num?)?.toDouble() ?? 0,
+      averageSessionDuration:
+          (json['average_session_duration'] as num?)?.toDouble() ?? 0,
     );
   }
 }

@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/analytics/analytics_service.dart';
@@ -70,7 +72,8 @@ final badgeRepositoryProvider = Provider<BadgeRepository>((ref) {
   return BadgeRepository(ref.read(apiClientProvider));
 });
 
-final communicationRepositoryProvider = Provider<CommunicationRepository>((ref) {
+final communicationRepositoryProvider =
+    Provider<CommunicationRepository>((ref) {
   return CommunicationRepository(
     apiClient: ref.read(apiClientProvider),
     tokenStore: ref.read(tokenStoreProvider),
@@ -89,8 +92,10 @@ final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
   return AnalyticsService();
 });
 
-final pushNotificationServiceProvider = Provider<PushNotificationService>((ref) {
-  final service = PushNotificationService(apiClient: ref.read(apiClientProvider));
+final pushNotificationServiceProvider =
+    Provider<PushNotificationService>((ref) {
+  final service =
+      PushNotificationService(apiClient: ref.read(apiClientProvider));
   ref.onDispose(() {
     service.dispose();
   });
@@ -111,8 +116,37 @@ final onboardingNativeLanguageProvider =
 final onboardingTargetLanguageProvider =
     StateProvider<String>((ref) => 'French');
 
+final themeModeProvider =
+    AsyncNotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+
 final authStateProvider =
     AsyncNotifierProvider<AuthStateNotifier, bool>(AuthStateNotifier.new);
+
+class ThemeModeNotifier extends AsyncNotifier<ThemeMode> {
+  static const String _themeModePreferenceKey = 'theme_mode';
+
+  @override
+  Future<ThemeMode> build() async {
+    final prefs = await SharedPreferences.getInstance();
+    final themeModeName = prefs.getString(_themeModePreferenceKey);
+    return _themeModeFromName(themeModeName) ?? ThemeMode.light;
+  }
+
+  Future<void> setThemeMode(ThemeMode themeMode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_themeModePreferenceKey, themeMode.name);
+    state = AsyncData(themeMode);
+  }
+
+  ThemeMode? _themeModeFromName(String? themeModeName) {
+    for (final themeMode in ThemeMode.values) {
+      if (themeMode.name == themeModeName) {
+        return themeMode;
+      }
+    }
+    return null;
+  }
+}
 
 class AuthStateNotifier extends AsyncNotifier<bool> {
   @override

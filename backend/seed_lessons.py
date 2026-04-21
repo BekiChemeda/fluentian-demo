@@ -29,6 +29,8 @@ ALL_LESSONS = [
           "dialogue_prompt": "Bonjour ! Comment allez-vous ?",
           "dialogue_choices": ["Je vais bien, merci. Et vous ?", "Oui, c'est ça.", "Je m'appelle Marc."],
           "dialogue_answer": "Je vais bien, merci. Et vous ?",
+          "choices": ["Je vais bien, merci. Et vous ?", "Oui, c'est ça.", "Je m'appelle Marc."],
+          "answer": "Je vais bien, merci. Et vous ?",
           "dialogue": [
             {"speaker": "Professeur", "text": "Bonjour ! Comment allez-vous ?", "mine": False},
             {"speaker": "Étudiant", "text": "...", "mine": True}
@@ -42,6 +44,7 @@ ALL_LESSONS = [
           "base_explanation": "To introduce yourself, French uses the reflexive verb 's'appeler' (to call oneself).",
           "tokens": ["m'appelle", "Hana", "Je", "."],
           "ordering_answer": "Je m'appelle Hana",
+          "answer": "Je m'appelle Hana",
           "has_question": True
         },
         {
@@ -52,6 +55,8 @@ ALL_LESSONS = [
           "mcq_title": "Comment dit-on 'Good morning, Sir' ?",
           "mcq_choices": ["Bonjour, Monsieur", "Bonjour, Madame", "Salut, Monsieur"],
           "mcq_answer": "Bonjour, Monsieur",
+          "choices": ["Bonjour, Monsieur", "Bonjour, Madame", "Salut, Monsieur"],
+          "answer": "Bonjour, Monsieur",
           "has_question": True
         },
         {
@@ -74,6 +79,8 @@ ALL_LESSONS = [
             {"key": "Bonjour, Monsieur", "value": "Formal (Business)"},
             {"key": "Bonsoir", "value": "Evening Greeting"}
           ],
+          "choices": ["Informal (Friends)", "Formal (Business)", "Evening Greeting"],
+          "answer": "Formal (Business)",
           "has_question": True
         },
         {
@@ -103,6 +110,7 @@ ALL_LESSONS = [
           "base_explanation": "Turning a casual 'Salut' into a polite greeting for a professional setting.",
           "prompt": "Transformez 'Salut' en bonjour formel pour un homme.",
           "answer": "Bonjour Monsieur",
+          "choices": ["Bonjour Monsieur", "Salut Monsieur", "Bonsoir Monsieur"],
           "has_question": True
         },
         {
@@ -140,6 +148,8 @@ ALL_LESSONS = [
           "dialogue_prompt": "Quel est votre numéro de téléphone ?",
           "dialogue_choices": ["C'est le 06 12 34 56 78.", "Je suis le 06 12.", "J'appelle demain."],
           "dialogue_answer": "C'est le 06 12 34 56 78.",
+          "choices": ["C'est le 06 12 34 56 78.", "Je suis le 06 12.", "J'appelle demain."],
+          "answer": "C'est le 06 12 34 56 78.",
           "dialogue": [
             {"speaker": "Secrétaire", "text": "Quel est votre numéro de téléphone ?", "mine": False},
             {"speaker": "Client", "text": "...", "mine": True}
@@ -152,6 +162,7 @@ ALL_LESSONS = [
           "hint": "Question word + Verb + Subject.",
           "tokens": ["âge", "avez", "Quel", "vous", "?"],
           "ordering_answer": "Quel âge avez vous ?",
+          "answer": "Quel âge avez vous ?",
           "has_question": True
         },
         {
@@ -161,6 +172,8 @@ ALL_LESSONS = [
           "mcq_title": "Comment dit-on le chiffre '12' ?",
           "mcq_choices": ["Douze", "Deux", "Vingt"],
           "mcq_answer": "Douze",
+          "choices": ["Douze", "Deux", "Vingt"],
+          "answer": "Douze",
           "has_question": True
         },
         {
@@ -181,6 +194,8 @@ ALL_LESSONS = [
             {"key": "11", "value": "Onze"},
             {"key": "15", "value": "Quinze"}
           ],
+          "choices": ["Huit", "Onze", "Quinze"],
+          "answer": "Onze",
           "has_question": True
         },
         {
@@ -198,6 +213,7 @@ ALL_LESSONS = [
           "hint": "Data to sentence.",
           "prompt": "Data: [Nom: Jean | Age: 19]. Create the 'Age' sentence.",
           "answer": "Jean a dix-neuf ans.",
+          "choices": ["Jean a dix-neuf ans.", "Jean est dix-neuf.", "Jean a dix-neuf."],
           "has_question": True
         }
       ]
@@ -225,6 +241,8 @@ ALL_LESSONS = [
           "dialogue_prompt": "Est-ce que tu as des frères et sœurs ?",
           "dialogue_choices": ["Oui, j'ai un frère et une sœur.", "Je m'appelle Jean.", "Ma mère est française."],
           "dialogue_answer": "Oui, j'ai un frère et une sœur.",
+          "choices": ["Oui, j'ai un frère et une sœur.", "Je m'appelle Jean.", "Ma mère est française."],
+          "answer": "Oui, j'ai un frère et une sœur.",
           "dialogue": [
             {"speaker": "Ami", "text": "Est-ce que tu as des frères et sœurs ?", "mine": False},
             {"speaker": "Vous", "text": "...", "mine": True}
@@ -237,6 +255,7 @@ ALL_LESSONS = [
           "hint": "Possessive + Noun + Verb + Adjective.",
           "tokens": ["père", "Mon", "est", "professeur", "."],
           "ordering_answer": "Mon père est professeur",
+          "answer": "Mon père est professeur",
           "has_question": True
         },
         {
@@ -246,6 +265,8 @@ ALL_LESSONS = [
           "mcq_title": "Comment dit-on 'The daughter' ?",
           "mcq_choices": ["La fille", "Le fils", "La femme"],
           "mcq_answer": "La fille",
+          "choices": ["La fille", "Le fils", "La femme"],
+          "answer": "La fille",
           "has_question": True
         },
         {
@@ -266,6 +287,8 @@ ALL_LESSONS = [
             {"key": "Le frère", "value": "La sœur"},
             {"key": "Le grand-père", "value": "La grand-mère"}
           ],
+          "choices": ["La mère", "La sœur", "La grand-mère"],
+          "answer": "La sœur",
           "has_question": True
         },
         {
@@ -283,6 +306,7 @@ ALL_LESSONS = [
           "hint": "Use 'ne... pas'.",
           "prompt": "Transform into negative: 'J'ai un frère.'",
           "answer": "Je n'ai pas de frère.",
+          "choices": ["Je n'ai pas de frère.", "Je suis pas de frère.", "Je n'ai un frère pas."],
           "has_question": True
         }
       ]
@@ -310,6 +334,8 @@ ALL_LESSONS = [
           "dialogue_prompt": "Qu'est-ce que tu aimes faire ?",
           "dialogue_choices": ["J'aime regarder la télévision.", "Je n'ai pas de frère.", "Il est midi."],
           "dialogue_answer": "J'aime regarder la télévision.",
+          "choices": ["J'aime regarder la télévision.", "Je n'ai pas de frère.", "Il est midi."],
+          "answer": "J'aime regarder la télévision.",
           "dialogue": [
             {"speaker": "Collègue", "text": "Qu'est-ce que tu aimes faire ?", "mine": False},
             {"speaker": "Vous", "text": "...", "mine": True}
@@ -322,6 +348,7 @@ ALL_LESSONS = [
           "hint": "Verb + beaucoup.",
           "tokens": ["beaucoup", "le", "J'aime", "cinéma", "."],
           "ordering_answer": "J'aime beaucoup le cinéma",
+          "answer": "J'aime beaucoup le cinéma",
           "has_question": True
         },
         {
@@ -331,6 +358,8 @@ ALL_LESSONS = [
           "mcq_title": "Comment dit-on 'To listen to music' ?",
           "mcq_choices": ["Écouter de la musique", "Regarder la musique", "Lire la musique"],
           "mcq_answer": "Écouter de la musique",
+          "choices": ["Écouter de la musique", "Regarder la musique", "Lire la musique"],
+          "answer": "Écouter de la musique",
           "has_question": True
         },
         {
@@ -351,6 +380,8 @@ ALL_LESSONS = [
             {"key": "Regarder", "value": "Un film"},
             {"key": "Jouer", "value": "Au football"}
           ],
+          "choices": ["Un livre", "Un film", "Au football"],
+          "answer": "Un film",
           "has_question": True
         },
         {
@@ -368,6 +399,7 @@ ALL_LESSONS = [
           "hint": "Negative likes.",
           "prompt": "Transform into negative: 'J'aime le chocolat.'",
           "answer": "Je n'aime pas le chocolat.",
+          "choices": ["Je n'aime pas le chocolat.", "Je n'aime le chocolat.", "Je suis pas le chocolat."],
           "has_question": True
         }
       ]
@@ -395,6 +427,8 @@ ALL_LESSONS = [
           "dialogue_prompt": "Où habitez-vous ?",
           "dialogue_choices": ["J'habite à Lyon.", "Je suis professeur.", "J'aime ma mère."],
           "dialogue_answer": "J'habite à Lyon.",
+          "choices": ["J'habite à Lyon.", "Je suis professeur.", "J'aime ma mère."],
+          "answer": "J'habite à Lyon.",
           "dialogue": [
             {"speaker": "Agent", "text": "Où habitez-vous ?", "mine": False},
             {"speaker": "Client", "text": "...", "mine": True}
@@ -407,6 +441,7 @@ ALL_LESSONS = [
           "hint": "Subject + Verb + Article.",
           "tokens": ["habite", "une", "maison", "Je", "dans", "."],
           "ordering_answer": "Je habite dans une maison",
+          "answer": "Je habite dans une maison",
           "has_question": True
         },
         {
@@ -416,6 +451,8 @@ ALL_LESSONS = [
           "mcq_title": "Comment dit-on 'A house with a garden' ?",
           "mcq_choices": ["Une maison avec un jardin", "Un appartement", "Un studio"],
           "mcq_answer": "Une maison avec un jardin",
+          "choices": ["Une maison avec un jardin", "Un appartement", "Un studio"],
+          "answer": "Une maison avec un jardin",
           "has_question": True
         },
         {
@@ -436,6 +473,8 @@ ALL_LESSONS = [
             {"key": "La chambre", "value": "Dormir"},
             {"key": "Le salon", "value": "Regarder la télé"}
           ],
+          "choices": ["Préparer le repas", "Dormir", "Regarder la télé"],
+          "answer": "Dormir",
           "has_question": True
         },
         {
@@ -453,6 +492,7 @@ ALL_LESSONS = [
           "hint": "Change to 'Nous'.",
           "prompt": "Transformez: 'J'habite à Paris' → 'Nous...'",
           "answer": "Nous habitons à Paris.",
+          "choices": ["Nous habitons à Paris.", "Nous habite à Paris.", "Nous sommes à habiter Paris."],
           "has_question": True
         }
       ]

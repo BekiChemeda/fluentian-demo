@@ -14,13 +14,15 @@ class FluentianApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authStateProvider);
     final onboardingDone = ref.watch(onboardingDoneProvider);
+    final themeMode =
+        ref.watch(themeModeProvider).valueOrNull ?? ThemeMode.light;
 
     return MaterialApp(
       title: 'Fluentian',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       darkTheme: buildDarkAppTheme(),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: authState.when(
         data: (isAuthed) {
           if (!onboardingDone) return const OnboardingScreen();
