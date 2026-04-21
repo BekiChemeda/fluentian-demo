@@ -1,0 +1,99 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../app/providers.dart';
+
+class OnboardingScreen extends ConsumerStatefulWidget {
+  const OnboardingScreen({super.key});
+
+  @override
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
+  static const _baseLanguageOptions = ['Amharic', 'English'];
+  String _nativeLanguage = 'Amharic';
+  String _targetLanguage = 'French';
+  double _goal = 20;
+
+  @override
+  void initState() {
+    super.initState();
+    _nativeLanguage = ref.read(onboardingNativeLanguageProvider);
+    _targetLanguage = ref.read(onboardingTargetLanguageProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+              colors: [Color(0xFFE7F8EA), Color(0xFFFFF8EE)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Welcome to Fluentian',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                const Text(
+                    'Start French with your local language and build your daily streak.'),
+                const SizedBox(height: 24),
+                const Text('Native Language'),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: _nativeLanguage,
+                  items: _baseLanguageOptions
+                      .map((lang) =>
+                          DropdownMenuItem(value: lang, child: Text(lang)))
+                      .toList(),
+                  onChanged: (v) {
+                    final value = v ?? 'Amharic';
+                    setState(() => _nativeLanguage = value);
+                    ref.read(onboardingNativeLanguageProvider.notifier).state =
+                        value;
+                  },
+                ),
+                const SizedBox(height: 16),
+                const Text('Target Language'),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: _targetLanguage,
+                  items: const [
+                    DropdownMenuItem(value: 'French', child: Text('French'))
+                  ],
+                  onChanged: (v) =>
+                      setState(() => _targetLanguage = v ?? 'French'),
+                ),
+                const SizedBox(height: 16),
+                Text('Daily XP Goal: ${_goal.toInt()}'),
+                Slider(
+                    min: 10,
+                    max: 100,
+                    value: _goal,
+                    onChanged: (v) => setState(() => _goal = v)),
+                const Spacer(),
+                ElevatedButton(
+                  onPressed: () {
+                    ref.read(onboardingNativeLanguageProvider.notifier).state =
+                        _nativeLanguage;
+                    ref.read(onboardingTargetLanguageProvider.notifier).state =
+                        _targetLanguage;
+                    ref.read(onboardingDoneProvider.notifier).state = true;
+                  },
+                  child: const Text('Continue'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
