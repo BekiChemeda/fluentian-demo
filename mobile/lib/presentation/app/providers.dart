@@ -21,7 +21,17 @@ import '../../data/repositories/user_repository.dart';
 
 final tokenStoreProvider = Provider<TokenStore>((ref) => TokenStore());
 
+const String _defaultApiBaseUrl = 'http://165.22.149.133:8000';
+
 String _resolveBaseUrl() {
+  const String configuredBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _defaultApiBaseUrl,
+  );
+  if (configuredBaseUrl.isNotEmpty) {
+    return configuredBaseUrl;
+  }
+
   if (kIsWeb) {
     return 'http://127.0.0.1:8000';
   }
