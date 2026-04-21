@@ -1,0 +1,27 @@
+# Sensitive local environment files
+backend/.env
+backend/.env.example
+
+# Generic env files
+.env
+.env.*
+**/.env
+**/.env.*
+*.pyc
+.env
+__pycache__/
+venv/
+.idea/
+.DS_Store
+*.log
+*.sqlite3
+*.db
+*.egg-info/
+dist/
+build/
+*.egg
+coverage/
+htmlcov/
+*.coverage
+.coverage.*
+.env
