@@ -10,7 +10,19 @@ class DialogueLine(BaseModel):
 
 
 class LessonBlock(BaseModel):
-    type: Literal["dialogue", "sentence", "ordering", "translation_mcq"]
+    type: Literal[
+        "dialogue",
+        "sentence",
+        "ordering",
+        "translation_mcq",
+        "cloze",
+        "matching",
+        "phonetic_analysis",
+        "cultural_insight",
+        "transformation",
+        "logic_analysis",
+        "mathematical_analysis",
+    ]
     title: str
     hint: str = ""
     base_explanation: str = ""
