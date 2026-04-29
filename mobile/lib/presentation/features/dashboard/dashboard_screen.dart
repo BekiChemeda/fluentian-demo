@@ -15,6 +15,8 @@ class DashboardScreen extends ConsumerWidget {
     final lessons = ref.watch(lessonsProvider);
     final progress = ref.watch(progressProvider);
     final badges = ref.watch(badgeProvider);
+    final subscription = ref.watch(subscriptionProvider);
+    final usage = ref.watch(usageProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Fluentian')),
@@ -33,6 +35,8 @@ class DashboardScreen extends ConsumerWidget {
                 XPBar(currentXp: user.xp, goal: user.dailyXpGoal),
                 const SizedBox(height: 16),
                 StreakWidget(streak: user.streak),
+                const SizedBox(height: 16),
+                _PlanSummary(subscription: subscription, usage: usage),
                 const SizedBox(height: 24),
                 Text('Next lesson',
                     style: Theme.of(context).textTheme.titleMedium),
@@ -138,6 +142,64 @@ class DashboardScreen extends ConsumerWidget {
 
   static void _open(BuildContext context, Widget screen) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  }
+}
+
+class _PlanSummary extends StatelessWidget {
+  const _PlanSummary({required this.subscription, required this.usage});
+
+  final AsyncValue<dynamic> subscription;
+  final AsyncValue<dynamic> usage;
+
+  @override
+  Widget build(BuildContext context) {
+    final planLabel = subscription.maybeWhen(
+      data: (plan) => plan.tier.toString().replaceAll('_', ' ').toUpperCase(),
+      orElse: () => 'PLAN',
+    );
+    final usageCount = usage.maybeWhen(
+      data: (items) => items.fold<int>(
+        0,
+        (total, item) => total + (item.usedCount as int),
+      ),
+      orElse: () => 0,
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0x1A47BDB1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.workspace_premium_rounded,
+                  color: Color(0xFF183765)),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(planLabel,
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+                  Text(
+                    usageCount == 0
+                        ? 'No AI usage recorded today'
+                        : '$usageCount AI actions used today',
+                    style: const TextStyle(color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

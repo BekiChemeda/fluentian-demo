@@ -46,6 +46,9 @@ class _LessonPlayerScreenState extends ConsumerState<LessonPlayerScreen>
     _shakeController = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 300));
     _configureSpeechTools();
+    Future.microtask(() {
+      ref.read(lessonRepositoryProvider).startLesson(widget.lessonId);
+    });
   }
 
   @override
@@ -342,27 +345,6 @@ class _LessonPlayerScreenState extends ConsumerState<LessonPlayerScreen>
         var localError = error;
         var localLoading = false;
         final followUpController = TextEditingController();
-
-        Future<void> runAction(String action, {String? followUp}) async {
-          (context as Element).markNeedsBuild();
-          localLoading = true;
-          localError = null;
-          (context as Element).markNeedsBuild();
-          try {
-            localData = await _fetchExplanation(
-              lesson: lesson,
-              block: block,
-              blockIndex: blockIndex,
-              action: action,
-              inlineContext: followUp ?? inlineContext,
-            );
-          } catch (_) {
-            localError = 'Could not refresh explanation.';
-          } finally {
-            localLoading = false;
-            (context as Element).markNeedsBuild();
-          }
-        }
 
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -702,7 +684,8 @@ class _LessonPlayerScreenState extends ConsumerState<LessonPlayerScreen>
                               blockIndex: _blockIndex,
                               inlineContext: contextText,
                             ),
-                            onPressSpeaker: () => _runDialogueSpeechAssist(block),
+                            onPressSpeaker: () =>
+                                _runDialogueSpeechAssist(block),
                           ),
                         ),
                       ),
@@ -1258,51 +1241,6 @@ class _LessonExplainData {
   final String simple;
   final List<String> examples;
   final List<String> rules;
-
-  factory _LessonExplainData.fromReply({
-    required String reply,
-    required String baseLanguage,
-  }) {
-    String section(String marker, String next) {
-      final start = reply.indexOf(marker);
-      if (start == -1) return '';
-      final from = start + marker.length;
-      final end = next.isEmpty ? reply.length : reply.indexOf(next, from);
-      if (end == -1) return reply.substring(from).trim();
-      return reply.substring(from, end).trim();
-    }
-
-    final simple = section('SIMPLE:', 'EXAMPLES:');
-    final examplesRaw = section('EXAMPLES:', 'RULES:');
-    final rulesRaw = section('RULES:', '');
-
-    final examples = examplesRaw
-        .split('\n')
-        .map((e) => e.replaceFirst('-', '').trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-    final rules = rulesRaw
-        .split('\n')
-        .map((e) => e.replaceFirst('-', '').trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
-    if (simple.isEmpty && examples.isEmpty && rules.isEmpty) {
-      return _LessonExplainData(
-        simple: reply.trim(),
-        examples: const [],
-        rules: [
-          'Explanation provided in $baseLanguage',
-        ],
-      );
-    }
-
-    return _LessonExplainData(
-      simple: simple.isEmpty ? reply.trim() : simple,
-      examples: examples,
-      rules: rules,
-    );
-  }
 
   factory _LessonExplainData.fromApi({
     required Map<String, dynamic> data,

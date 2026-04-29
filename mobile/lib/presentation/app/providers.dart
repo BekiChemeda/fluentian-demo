@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +9,7 @@ import '../../core/notifications/push_notification_service.dart';
 import '../../core/storage/token_store.dart';
 import '../../data/models/badge_model.dart';
 import '../../data/models/lesson_model.dart';
+import '../../data/models/platform_models.dart';
 import '../../data/models/progress_model.dart';
 import '../../data/models/user_model.dart';
 import '../../data/repositories/auth_repository.dart';
@@ -18,6 +18,7 @@ import '../../data/repositories/communication_repository.dart';
 import '../../data/repositories/community_repository.dart';
 import '../../data/repositories/delf_repository.dart';
 import '../../data/repositories/lesson_repository.dart';
+import '../../data/repositories/platform_repository.dart';
 import '../../data/repositories/progress_repository.dart';
 import '../../data/repositories/user_repository.dart';
 
@@ -53,6 +54,10 @@ final lessonRepositoryProvider = Provider<LessonRepository>((ref) {
 
 final progressRepositoryProvider = Provider<ProgressRepository>((ref) {
   return ProgressRepository(ref.read(apiClientProvider));
+});
+
+final platformRepositoryProvider = Provider<PlatformRepository>((ref) {
+  return PlatformRepository(ref.read(apiClientProvider));
 });
 
 final badgeRepositoryProvider = Provider<BadgeRepository>((ref) {
@@ -102,6 +107,78 @@ final onboardingNativeLanguageProvider =
     StateProvider<String>((ref) => 'Amharic');
 final onboardingTargetLanguageProvider =
     StateProvider<String>((ref) => 'French');
+
+final languagesProvider = FutureProvider<List<LanguageModel>>((ref) async {
+  try {
+    final items = await ref.read(platformRepositoryProvider).getLanguages();
+    if (items.isNotEmpty) {
+      return items;
+    }
+  } catch (_) {
+    // Startup fallback for a brand-new backend before seed data is loaded.
+  }
+  return const [
+    LanguageModel(
+      id: 'fr',
+      isoCode: 'fr',
+      englishName: 'French',
+      nativeName: 'Français',
+      isActive: true,
+    ),
+    LanguageModel(
+      id: 'en',
+      isoCode: 'en',
+      englishName: 'English',
+      nativeName: 'English',
+      isActive: true,
+    ),
+    LanguageModel(
+      id: 'am',
+      isoCode: 'am',
+      englishName: 'Amharic',
+      nativeName: 'አማርኛ',
+      isActive: true,
+    ),
+    LanguageModel(
+      id: 'om',
+      isoCode: 'om',
+      englishName: 'Afaan Oromoo',
+      nativeName: 'Afaan Oromoo',
+      isActive: true,
+    ),
+  ];
+});
+
+final learningPathProvider = FutureProvider<LearningPathModel>((ref) async {
+  await ref.watch(authStateProvider.future);
+  return ref.read(platformRepositoryProvider).getLearningPath();
+});
+
+final subscriptionProvider = FutureProvider<SubscriptionModel>((ref) async {
+  await ref.watch(authStateProvider.future);
+  return ref.read(platformRepositoryProvider).getSubscription();
+});
+
+final usageProvider = FutureProvider<List<UsageItemModel>>((ref) async {
+  await ref.watch(authStateProvider.future);
+  return ref.read(platformRepositoryProvider).getUsage();
+});
+
+final tutorsProvider = FutureProvider<List<TutorProfileModel>>((ref) async {
+  await ref.watch(authStateProvider.future);
+  return ref.read(platformRepositoryProvider).getTutors();
+});
+
+final bookingsProvider = FutureProvider<List<BookingModel>>((ref) async {
+  await ref.watch(authStateProvider.future);
+  return ref.read(platformRepositoryProvider).getBookings();
+});
+
+final opportunitiesProvider =
+    FutureProvider<List<OpportunityModel>>((ref) async {
+  await ref.watch(authStateProvider.future);
+  return ref.read(platformRepositoryProvider).getOpportunities();
+});
 
 final themeModeProvider =
     AsyncNotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);

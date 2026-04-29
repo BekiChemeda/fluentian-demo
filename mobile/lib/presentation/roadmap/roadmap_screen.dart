@@ -1,12 +1,12 @@
-import 'dart:convert';
-
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/lesson_model.dart';
+import '../../data/models/platform_models.dart';
 import '../app/providers.dart';
 import '../features/lessons/lesson_player_screen.dart';
+import '../widgets/app_state_widgets.dart';
 import 'unit_card.dart';
 
 class RoadmapScreen extends ConsumerStatefulWidget {
@@ -27,7 +27,8 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _confettiController = ConfettiController(duration: const Duration(milliseconds: 1200));
+    _confettiController =
+        ConfettiController(duration: const Duration(milliseconds: 1200));
   }
 
   @override
@@ -41,6 +42,7 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
   Widget build(BuildContext context) {
     final lessonsAsync = ref.watch(lessonsProvider);
     final meAsync = ref.watch(meProvider);
+    final learningPathAsync = ref.watch(learningPathProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -57,26 +59,32 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
               ),
             ),
             child: lessonsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (_, __) => _RoadmapFromSample(
-                expandedUnits: _expandedUnits,
-                scrollController: _scrollController,
-                hasAutoScrolled: _hasAutoScrolled,
-                meAsync: meAsync,
-                confettiController: _confettiController,
-                lessonKeys: _lessonKeys,
-                onRefresh: () {
+              loading: () => const AppLoadingState(message: 'Loading lessons'),
+              error: (_, __) => AppErrorState(
+                title: 'Could not load lessons',
+                message:
+                    'Check your API base URL and make sure the backend is running.',
+                onRetry: () {
                   ref.read(fluentianStateProvider.notifier).refreshAll();
+                  ref.invalidate(learningPathProvider);
                 },
-                onCompleteLesson: (lessonId) async {
-                  await ref.read(completionProvider.notifier).completeLesson(lessonId, 100);
-                },
-                onToggleUnit: _toggleUnit,
-                onMarkAutoScrolled: _markAutoScrolled,
               ),
               data: (lessons) {
-                // Map your lesson API response into unit-grouped view models for the roadmap.
-                final units = _buildUnitsFromLessons(lessons, _lessonKeys);
+                final learningPath = learningPathAsync.valueOrNull;
+                final units = _buildUnitsFromLearningPath(
+                  lessons,
+                  learningPath,
+                  _lessonKeys,
+                );
+
+                if (lessons.isEmpty) {
+                  return const AppEmptyState(
+                    icon: Icons.route_rounded,
+                    title: 'No lessons published yet',
+                    message:
+                        'Run the backend seed script or publish lessons from the admin API.',
+                  );
+                }
 
                 if (_expandedUnits.isEmpty && units.isNotEmpty) {
                   _expandedUnits.add(units.first.id);
@@ -101,7 +109,9 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
                       lesson: lesson,
                       onStart: () {
                         Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => LessonPlayerScreen(lessonId: lesson.id)),
+                          MaterialPageRoute(
+                              builder: (_) =>
+                                  LessonPlayerScreen(lessonId: lesson.id)),
                         );
                       },
                     );
@@ -140,10 +150,6 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
     });
   }
 
-  void _markAutoScrolled() {
-    _hasAutoScrolled = true;
-  }
-
   void _tryAutoScrollToActive({
     required List<RoadmapUnitView> units,
     required Map<int, GlobalKey> lessonKeys,
@@ -163,7 +169,9 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
       return;
     }
 
-    final unitId = units.firstWhere((u) => u.lessons.any((l) => l.id == activeLesson.id)).id;
+    final unitId = units
+        .firstWhere((u) => u.lessons.any((l) => l.id == activeLesson.id))
+        .id;
     if (!expandedUnits.contains(unitId)) {
       setState(() {
         expandedUnits.add(unitId);
@@ -188,54 +196,49 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
     });
   }
 
-  static List<RoadmapUnitView> _buildUnitsFromLessons(List<LessonModel> lessons, Map<int, GlobalKey> lessonKeys) {
-    if (lessons.isEmpty) {
-      return _buildUnitsFromSampleJson(lessonKeys);
-    }
-
-    final sorted = [...lessons]..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
-    const unitSize = 5;
+  static List<RoadmapUnitView> _buildUnitsFromLearningPath(
+    List<LessonModel> lessons,
+    LearningPathModel? learningPath,
+    Map<int, GlobalKey> lessonKeys,
+  ) {
+    final sorted = [...lessons]
+      ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
 
     final views = <RoadmapUnitView>[];
+    final lessonById = {for (final lesson in sorted) lesson.id: lesson};
 
-    for (var i = 0; i < sorted.length; i += unitSize) {
-      final chunk = sorted.skip(i).take(unitSize).toList();
-      final unitNumber = (i ~/ unitSize) + 1;
-
-      final lessonsInUnit = <RoadmapLessonView>[];
-
-      for (var j = 0; j < chunk.length; j++) {
-        final globalIndex = i + j;
-        final current = chunk[j];
-
-        final previousCompleted = globalIndex == 0 ? true : sorted[globalIndex - 1].completed;
-        final locked = !current.unlocked && !current.completed && !previousCompleted;
-
-        lessonsInUnit.add(
-          RoadmapLessonView(
-            id: current.id,
-            title: 'Lesson ${current.orderIndex}',
-            description: _lessonDescription(current),
-            locked: locked,
-            completed: current.completed,
-            xpReward: current.xpReward,
-            isActive: !locked && !current.completed,
-          ),
-        );
+    if (learningPath != null && learningPath.units.isNotEmpty) {
+      for (final unit in learningPath.units) {
+        final chunk = unit.lessonIds
+            .map((id) => lessonById[id])
+            .whereType<LessonModel>()
+            .toList();
+        if (chunk.isEmpty) {
+          continue;
+        }
+        views.add(_buildUnitView(
+          unitNumber: unit.unitNo,
+          title: unit.title,
+          description: unit.description ?? _unitDescription(unit.unitNo),
+          chunk: chunk,
+          allLessons: sorted,
+        ));
       }
+    }
 
-      final completedCount = lessonsInUnit.where((lesson) => lesson.completed).length;
-      final progress = lessonsInUnit.isEmpty ? 0.0 : completedCount / lessonsInUnit.length;
-
-      views.add(
-        RoadmapUnitView(
-          id: unitNumber,
+    if (views.isEmpty) {
+      const unitSize = 5;
+      for (var i = 0; i < sorted.length; i += unitSize) {
+        final chunk = sorted.skip(i).take(unitSize).toList();
+        final unitNumber = (i ~/ unitSize) + 1;
+        views.add(_buildUnitView(
+          unitNumber: unitNumber,
           title: 'Unit $unitNumber',
           description: _unitDescription(unitNumber),
-          progress: progress,
-          lessons: lessonsInUnit,
-        ),
-      );
+          chunk: chunk,
+          allLessons: sorted,
+        ));
+      }
     }
 
     for (final unit in views) {
@@ -245,6 +248,51 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
     }
 
     return views;
+  }
+
+  static RoadmapUnitView _buildUnitView({
+    required int unitNumber,
+    required String title,
+    required String description,
+    required List<LessonModel> chunk,
+    required List<LessonModel> allLessons,
+  }) {
+    final lessonsInUnit = <RoadmapLessonView>[];
+
+    for (final current in chunk) {
+      final globalIndex =
+          allLessons.indexWhere((lesson) => lesson.id == current.id);
+
+      final previousCompleted =
+          globalIndex <= 0 ? true : allLessons[globalIndex - 1].completed;
+      final locked =
+          !current.unlocked && !current.completed && !previousCompleted;
+
+      lessonsInUnit.add(
+        RoadmapLessonView(
+          id: current.id,
+          title: _lessonTitle(current),
+          description: _lessonDescription(current),
+          locked: locked,
+          completed: current.completed,
+          xpReward: current.xpReward,
+          isActive: !locked && !current.completed,
+        ),
+      );
+    }
+
+    final completedCount =
+        lessonsInUnit.where((lesson) => lesson.completed).length;
+    final progress =
+        lessonsInUnit.isEmpty ? 0.0 : completedCount / lessonsInUnit.length;
+
+    return RoadmapUnitView(
+      id: unitNumber,
+      title: title,
+      description: description,
+      progress: progress,
+      lessons: lessonsInUnit,
+    );
   }
 }
 
@@ -329,7 +377,8 @@ class _RoadmapList extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomScrollView(
       controller: scrollController,
-      physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+      physics:
+          const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
@@ -353,7 +402,9 @@ class _RoadmapList extends StatelessWidget {
                 onTapLesson: (lesson) {
                   if (lesson.locked) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Finish the previous lesson to unlock this one.')),
+                      const SnackBar(
+                          content: Text(
+                              'Finish the previous lesson to unlock this one.')),
                     );
                     return;
                   }
@@ -375,8 +426,10 @@ class _ProgressHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lessonCount = units.fold<int>(0, (acc, unit) => acc + unit.lessons.length);
-    final completedCount = units.fold<int>(0, (acc, unit) => acc + unit.lessons.where((l) => l.completed).length);
+    final lessonCount =
+        units.fold<int>(0, (acc, unit) => acc + unit.lessons.length);
+    final completedCount = units.fold<int>(
+        0, (acc, unit) => acc + unit.lessons.where((l) => l.completed).length);
     final totalXp = units
         .expand((unit) => unit.lessons)
         .where((lesson) => lesson.completed)
@@ -387,7 +440,8 @@ class _ProgressHero extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFFEEFFF2), Color(0xFFFFFFFF)]),
+        gradient: const LinearGradient(
+            colors: [Color(0xFFEEFFF2), Color(0xFFFFFFFF)]),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: const Color(0xFFE5EFE8)),
       ),
@@ -401,7 +455,8 @@ class _ProgressHero extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             '$completedCount / $lessonCount lessons completed',
-            style: const TextStyle(color: Color(0xFF566273), fontWeight: FontWeight.w700),
+            style: const TextStyle(
+                color: Color(0xFF566273), fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 12),
           ClipRRect(
@@ -416,9 +471,15 @@ class _ProgressHero extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              _HeroChip(icon: Icons.bolt_rounded, label: '$totalXp XP earned', tint: const Color(0xFF198C3E)),
+              _HeroChip(
+                  icon: Icons.bolt_rounded,
+                  label: '$totalXp XP earned',
+                  tint: const Color(0xFF198C3E)),
               const SizedBox(width: 8),
-              _HeroChip(icon: Icons.layers_rounded, label: '${units.length} units', tint: const Color(0xFF2B7FD4)),
+              _HeroChip(
+                  icon: Icons.layers_rounded,
+                  label: '${units.length} units',
+                  tint: const Color(0xFF2B7FD4)),
             ],
           ),
         ],
@@ -428,7 +489,8 @@ class _ProgressHero extends StatelessWidget {
 }
 
 class _HeroChip extends StatelessWidget {
-  const _HeroChip({required this.icon, required this.label, required this.tint});
+  const _HeroChip(
+      {required this.icon, required this.label, required this.tint});
 
   final IconData icon;
   final String label;
@@ -447,7 +509,8 @@ class _HeroChip extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: tint),
           const SizedBox(width: 5),
-          Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: tint)),
+          Text(label,
+              style: TextStyle(fontWeight: FontWeight.w800, color: tint)),
         ],
       ),
     );
@@ -481,16 +544,23 @@ class _RoadmapSidePanel extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Today', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                const Text('Today',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 10),
                 Text(
-                  meAsync.maybeWhen(data: (u) => 'Streak: ${u.streak} days', orElse: () => 'Streak: -'),
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF4D5A6B)),
+                  meAsync.maybeWhen(
+                      data: (u) => 'Streak: ${u.streak} days',
+                      orElse: () => 'Streak: -'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: Color(0xFF4D5A6B)),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  meAsync.maybeWhen(data: (u) => 'XP: ${u.xp}', orElse: () => 'XP: -'),
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF4D5A6B)),
+                  meAsync.maybeWhen(
+                      data: (u) => 'XP: ${u.xp}', orElse: () => 'XP: -'),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, color: Color(0xFF4D5A6B)),
                 ),
                 const SizedBox(height: 10),
                 if (activeLesson != null)
@@ -503,85 +573,6 @@ class _RoadmapSidePanel extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _RoadmapFromSample extends StatelessWidget {
-  const _RoadmapFromSample({
-    required this.expandedUnits,
-    required this.scrollController,
-    required this.hasAutoScrolled,
-    required this.meAsync,
-    required this.confettiController,
-    required this.lessonKeys,
-    required this.onRefresh,
-    required this.onCompleteLesson,
-    required this.onToggleUnit,
-    required this.onMarkAutoScrolled,
-  });
-
-  final Set<int> expandedUnits;
-  final ScrollController scrollController;
-  final bool hasAutoScrolled;
-  final AsyncValue<dynamic> meAsync;
-  final ConfettiController confettiController;
-  final Map<int, GlobalKey> lessonKeys;
-  final VoidCallback onRefresh;
-  final Future<void> Function(int lessonId) onCompleteLesson;
-  final void Function(int unitId) onToggleUnit;
-  final VoidCallback onMarkAutoScrolled;
-
-  @override
-  Widget build(BuildContext context) {
-    final units = _buildUnitsFromSampleJson(lessonKeys);
-
-    if (expandedUnits.isEmpty && units.isNotEmpty) {
-      expandedUnits.add(units.first.id);
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!hasAutoScrolled) {
-        final active = units
-            .expand((unit) => unit.lessons)
-            .cast<RoadmapLessonView?>()
-            .firstWhere((lesson) => lesson?.isActive ?? false, orElse: () => null);
-        final targetKey = active == null ? null : lessonKeys[active.id];
-        if (targetKey?.currentContext != null) {
-          Scrollable.ensureVisible(targetKey!.currentContext!, duration: const Duration(milliseconds: 500));
-          onMarkAutoScrolled();
-        }
-      }
-    });
-
-    return Column(
-      children: [
-        Expanded(
-          child: _RoadmapContent(
-            units: units,
-            meAsync: meAsync,
-            expandedUnits: expandedUnits,
-            lessonKeys: lessonKeys,
-            scrollController: scrollController,
-            onTapLesson: (lesson) {
-              _openLessonSheet(
-                context: context,
-                lesson: lesson,
-                onStart: () {},
-              );
-            },
-            onToggleUnit: onToggleUnit,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: OutlinedButton.icon(
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Retry API load'),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -611,7 +602,8 @@ class _LessonSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SafeArea(
         top: false,
         child: Padding(
@@ -620,22 +612,27 @@ class _LessonSheet extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(lesson.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+              Text(lesson.title,
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
               Text(
                 lesson.description,
-                style: const TextStyle(color: Color(0xFF5A6778), fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                    color: Color(0xFF5A6778), fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 16),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEDF9F0),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   '+${lesson.xpReward} XP reward',
-                  style: const TextStyle(color: Color(0xFF168A3C), fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                      color: Color(0xFF168A3C), fontWeight: FontWeight.w800),
                 ),
               ),
               const SizedBox(height: 16),
@@ -663,6 +660,20 @@ String _lessonDescription(LessonModel lesson) {
   return 'Practice $mode with short interactive prompts.';
 }
 
+String _lessonTitle(LessonModel lesson) {
+  final blocks = lesson.content['blocks'];
+  if (blocks is List && blocks.isNotEmpty) {
+    final first = blocks.first;
+    if (first is Map<String, dynamic>) {
+      final title = first['title']?.toString().trim();
+      if (title != null && title.isNotEmpty) {
+        return title;
+      }
+    }
+  }
+  return 'Lesson ${lesson.orderIndex}';
+}
+
 String _unitDescription(int unitNumber) {
   const themes = <String>[
     'Build your basics with greetings and everyday verbs.',
@@ -673,109 +684,3 @@ String _unitDescription(int unitNumber) {
 
   return themes[(unitNumber - 1) % themes.length];
 }
-
-List<RoadmapUnitView> _buildUnitsFromSampleJson(Map<int, GlobalKey> lessonKeys) {
-  final parsed = jsonDecode(_sampleRoadmapJson) as Map<String, dynamic>;
-  final unitsJson = (parsed['units'] as List).cast<Map<String, dynamic>>();
-
-  final units = unitsJson
-      .map(
-        (unitJson) => RoadmapUnitView(
-          id: unitJson['id'] as int,
-          title: unitJson['title'] as String,
-          description: unitJson['description'] as String,
-          progress: (unitJson['progress'] as num).toDouble(),
-          lessons: (unitJson['lessons'] as List)
-              .cast<Map<String, dynamic>>()
-              .map(
-                (lessonJson) => RoadmapLessonView(
-                  id: lessonJson['id'] as int,
-                  title: lessonJson['title'] as String,
-                  description: lessonJson['description'] as String,
-                  locked: lessonJson['locked'] as bool,
-                  completed: lessonJson['completed'] as bool,
-                  xpReward: lessonJson['xp_reward'] as int,
-                  isActive: lessonJson['is_active'] as bool,
-                ),
-              )
-              .toList(),
-        ),
-      )
-      .toList();
-
-  for (final unit in units) {
-    for (final lesson in unit.lessons) {
-      lessonKeys.putIfAbsent(lesson.id, GlobalKey.new);
-    }
-  }
-
-  return units;
-}
-
-const String _sampleRoadmapJson = '''
-{
-  "units": [
-    {
-      "id": 1,
-      "title": "Unit 1",
-      "description": "Core phrases and introductions",
-      "progress": 0.66,
-      "lessons": [
-        {
-          "id": 1001,
-          "title": "Hello & Bye",
-          "description": "Learn greeting basics with short drills.",
-          "locked": false,
-          "completed": true,
-          "xp_reward": 10,
-          "is_active": false
-        },
-        {
-          "id": 1002,
-          "title": "Names",
-          "description": "Ask and answer names naturally.",
-          "locked": false,
-          "completed": true,
-          "xp_reward": 12,
-          "is_active": false
-        },
-        {
-          "id": 1003,
-          "title": "Where Are You From",
-          "description": "Use country and city phrases.",
-          "locked": false,
-          "completed": false,
-          "xp_reward": 15,
-          "is_active": true
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "title": "Unit 2",
-      "description": "Daily actions and habits",
-      "progress": 0.0,
-      "lessons": [
-        {
-          "id": 2001,
-          "title": "Morning Routine",
-          "description": "Vocabulary for daily routine talk.",
-          "locked": true,
-          "completed": false,
-          "xp_reward": 14,
-          "is_active": false
-        },
-        {
-          "id": 2002,
-          "title": "Asking Time",
-          "description": "Use practical time expressions.",
-          "locked": true,
-          "completed": false,
-          "xp_reward": 14,
-          "is_active": false
-        }
-      ]
-    }
-  ]
-}
-''';

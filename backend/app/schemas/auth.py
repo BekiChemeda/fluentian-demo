@@ -1,12 +1,10 @@
-from typing import Literal
-
 from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    native_language: Literal["Amharic", "English"] = "Amharic"
+    native_language: str = Field(default="Amharic", min_length=2, max_length=64)
     target_language: str = Field(default="French", min_length=2, max_length=64)
     daily_xp_goal: int = Field(default=20, ge=5, le=200)
 

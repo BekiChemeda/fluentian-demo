@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../ai/ai_coach_screen.dart';
 import '../community/cultural_exchange_screen.dart';
 import '../delf/delf_screen.dart';
+import '../opportunities/opportunity_board_screen.dart';
+import '../subscriptions/subscription_screen.dart';
+import '../tutors/tutor_booking_screen.dart';
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
@@ -14,6 +18,62 @@ class MoreScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _MoreCard(
+            icon: Icons.auto_awesome_rounded,
+            title: 'AI Tutor',
+            subtitle: 'Explain, correct, and get pronunciation feedback.',
+            accent: const Color(0xFF7C3AED),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const AiCoachScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _MoreCard(
+            icon: Icons.workspace_premium_rounded,
+            title: 'Subscription & Usage',
+            subtitle: 'Review your plan and daily AI feature limits.',
+            accent: const Color(0xFF2563EB),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SubscriptionScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _MoreCard(
+            icon: Icons.record_voice_over_rounded,
+            title: 'Tutor Booking',
+            subtitle: 'Find tutors and request practice sessions.',
+            accent: const Color(0xFF0F766E),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const TutorBookingScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _MoreCard(
+            icon: Icons.work_outline_rounded,
+            title: 'Opportunity Board',
+            subtitle: 'Explore opportunities and ask for application guidance.',
+            accent: const Color(0xFFB45309),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const OpportunityBoardScreen(),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
           _MoreCard(
             icon: Icons.public_rounded,
             title: 'Cultural Exchange',
@@ -113,8 +173,7 @@ class _MoreCard extends StatelessWidget {
                             fontSize: 16, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
                     Text(subtitle,
-                        style:
-                            const TextStyle(color: AppColors.textMuted)),
+                        style: const TextStyle(color: AppColors.textMuted)),
                   ],
                 ),
               ),

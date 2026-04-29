@@ -35,6 +35,10 @@ class LessonRepository {
     return LessonModel.fromJson(response.data as Map<String, dynamic>);
   }
 
+  Future<void> startLesson(int id) async {
+    await apiClient.dio.post('/lessons/$id/start');
+  }
+
   Future<Map<String, dynamic>> completeLesson(int id, int score) async {
     final response = await apiClient.dio
         .post('/lessons/$id/complete', data: {'score': score});
@@ -49,17 +53,38 @@ class LessonRepository {
     required String action,
     String? inlineContext,
   }) async {
-    final response = await apiClient.dio.post(
-      '/lessons/$lessonId/explain',
-      data: {
-        'block_title': blockTitle,
-        'block_hint': blockHint,
-        'block_answer': blockAnswer,
-        'action': action,
-        'inline_context': inlineContext,
-      },
-    );
-    return response.data as Map<String, dynamic>;
+    try {
+      final response = await apiClient.dio.post(
+        '/lessons/$lessonId/explain',
+        data: {
+          'block_title': blockTitle,
+          'block_hint': blockHint,
+          'block_answer': blockAnswer,
+          'action': action,
+          'inline_context': inlineContext,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } catch (_) {
+      final response = await apiClient.dio.post(
+        '/ai/explain',
+        data: {
+          'text': [
+            blockTitle,
+            blockHint,
+            blockAnswer,
+            if (inlineContext != null) inlineContext,
+          ].where((item) => item.trim().isNotEmpty).join('\n'),
+          'lesson_id': lessonId,
+          'source_type': 'lesson',
+        },
+      );
+      return {
+        'simple': response.data['result']?.toString() ?? '',
+        'examples': const [],
+        'rules': const [],
+      };
+    }
   }
 
   Future<void> _cacheLessons(List<Map<String, dynamic>> items) async {

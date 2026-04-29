@@ -12,7 +12,7 @@ class AuthScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
-  static const _baseLanguageOptions = ['Amharic', 'English'];
+  static const _baseLanguageOptions = ['Amharic', 'Afaan Oromoo', 'English'];
 
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
@@ -304,8 +304,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                   _nativeLanguage = selected;
                                 });
                                 ref
-                                    .read(
-                                        onboardingNativeLanguageProvider.notifier)
+                                    .read(onboardingNativeLanguageProvider
+                                        .notifier)
                                     .state = selected;
                               },
                             ),
@@ -356,9 +356,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                       ),
                                     )
                                   : Text(
-                                      _isRegister
-                                          ? 'Create account'
-                                          : 'Log in',
+                                      _isRegister ? 'Create account' : 'Log in',
                                     ),
                             ),
                           ),
@@ -420,8 +418,9 @@ class _AuthModeButton extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color:
-                      selected ? const Color(0xFF0F5D3F) : const Color(0xFFE8F0EB),
+                  color: selected
+                      ? const Color(0xFF0F5D3F)
+                      : const Color(0xFFE8F0EB),
                   fontWeight: FontWeight.w700,
                 ),
           ),

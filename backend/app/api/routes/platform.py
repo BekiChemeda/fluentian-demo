@@ -51,7 +51,7 @@ AdminUserDep = Annotated[User, Depends(require_roles("admin"))]
 
 
 @router.get("/languages", response_model=LanguageListResponse)
-async def languages(db: DbDep, _: CurrentUserDep) -> LanguageListResponse:
+async def languages(db: DbDep) -> LanguageListResponse:
     return LanguageListResponse(items=await list_languages(db))
 
 
