@@ -204,6 +204,10 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
     final sorted = [...lessons]
       ..sort((a, b) => a.orderIndex.compareTo(b.orderIndex));
 
+    // Debug: print summary about the lessons list used to build the roadmap.
+    // ignore: avoid_print
+    print('Roadmap: totalLessons=${sorted.length} firstId=${sorted.isNotEmpty ? sorted.first.id : -1} firstOrderIndex=${sorted.isNotEmpty ? sorted.first.orderIndex : -1}');
+
     final views = <RoadmapUnitView>[];
     final lessonById = {for (final lesson in sorted) lesson.id: lesson};
 

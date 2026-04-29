@@ -20,7 +20,9 @@ router = APIRouter(prefix="/lessons", tags=["lessons"])
 @router.get("", response_model=LessonListResponse)
 async def get_lessons(
     page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=50),
+    # Allow larger page sizes so clients can request the full lesson list
+    # when needed (e.g. roadmap rendering). Keep a sensible upper bound.
+    page_size: int = Query(default=50, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> LessonListResponse:

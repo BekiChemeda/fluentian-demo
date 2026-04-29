@@ -13,8 +13,11 @@ class LessonRepository {
 
   Future<List<LessonModel>> getLessons() async {
     try {
-      final response = await apiClient.dio
-          .get('/lessons', queryParameters: {'page': 1, 'page_size': 50});
+        final response = await apiClient.dio.get('/lessons',
+          // Request a sufficiently large page size so the roadmap has access
+          // to the full lesson ordering. This avoids incorrect "locked"
+          // calculations caused by pagination boundaries.
+          queryParameters: {'page': 1, 'page_size': 1000});
       final items =
           (response.data['items'] as List).cast<Map<String, dynamic>>();
       final lessons = items.map(LessonModel.fromJson).toList()
