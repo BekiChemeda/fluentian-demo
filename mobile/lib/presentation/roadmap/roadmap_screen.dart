@@ -263,10 +263,16 @@ class _RoadmapScreenState extends ConsumerState<RoadmapScreen> {
       final globalIndex =
           allLessons.indexWhere((lesson) => lesson.id == current.id);
 
-      final previousCompleted =
-          globalIndex <= 0 ? true : allLessons[globalIndex - 1].completed;
-      final locked =
-          !current.unlocked && !current.completed && !previousCompleted;
+        final previousCompleted =
+            globalIndex <= 0 ? true : allLessons[globalIndex - 1].completed;
+        final locked = (() {
+          // Defensive: never lock the very first lesson in the overall list.
+          if (globalIndex <= 0) return false;
+          return !current.unlocked && !current.completed && !previousCompleted;
+        })();
+        // Debug logging to trace locking logic while running in emulator.
+        // ignore: avoid_print
+        print('Roadmap: lesson ${current.id} globalIndex=$globalIndex previousCompleted=$previousCompleted unlocked=${current.unlocked} completed=${current.completed} locked=$locked');
 
       lessonsInUnit.add(
         RoadmapLessonView(

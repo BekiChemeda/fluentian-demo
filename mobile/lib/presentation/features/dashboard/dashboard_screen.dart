@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../../data/models/platform_models.dart';
 import '../ui_lab/components_hub_screen.dart';
 import '../../widgets/streak_widget.dart';
 import '../../widgets/xp_bar.dart';
@@ -148,8 +149,8 @@ class DashboardScreen extends ConsumerWidget {
 class _PlanSummary extends StatelessWidget {
   const _PlanSummary({required this.subscription, required this.usage});
 
-  final AsyncValue<dynamic> subscription;
-  final AsyncValue<dynamic> usage;
+  final AsyncValue<SubscriptionModel> subscription;
+  final AsyncValue<List<UsageItemModel>> usage;
 
   @override
   Widget build(BuildContext context) {

@@ -24,7 +24,7 @@ import '../../data/repositories/user_repository.dart';
 
 final tokenStoreProvider = Provider<TokenStore>((ref) => TokenStore());
 
-const String _defaultApiBaseUrl = 'http://165.22.149.133:8000';
+const String _defaultApiBaseUrl = 'http://10.0.2.2:8000';
 
 String _resolveBaseUrl() {
   return const String.fromEnvironment(
