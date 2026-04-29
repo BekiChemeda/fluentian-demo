@@ -68,7 +68,7 @@ async def record_usage_event(
     usage.used_count += quantity
     usage.limit_count = limit_count
     usage.updated_at = now
-    db.add(UsageEvent(user_id=user.id, feature_key=feature_key, quantity=quantity, metadata=metadata, created_at=now))
+    db.add(UsageEvent(user_id=user.id, feature_key=feature_key, quantity=quantity, event_metadata=metadata, created_at=now))
     await db.commit()
     await db.refresh(usage)
     return usage

@@ -37,8 +37,10 @@ async def get_opportunity(db: AsyncSession, user: User, opportunity_id: UUID) ->
 async def create_opportunity(db: AsyncSession, actor: User, payload: OpportunityCreateRequest) -> Opportunity:
     _require_admin(actor)
     now = datetime.now(UTC)
+    data = payload.model_dump()
+    data["opportunity_metadata"] = data.pop("metadata", None)
     row = Opportunity(
-        **payload.model_dump(),
+        **data,
         created_by=actor.id,
         updated_by=actor.id,
         published_at=now if payload.is_published else None,

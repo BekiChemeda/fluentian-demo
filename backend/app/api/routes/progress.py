@@ -13,3 +13,8 @@ router = APIRouter(prefix="/progress", tags=["progress"])
 @router.get("", response_model=ProgressResponse)
 async def progress(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> ProgressResponse:
     return await get_progress(db, user)
+
+
+@router.get("/me", response_model=ProgressResponse)
+async def progress_me(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)) -> ProgressResponse:
+    return await get_progress(db, user)

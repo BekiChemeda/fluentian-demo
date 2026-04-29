@@ -31,6 +31,35 @@ from app.models import (
     User,
     UserNotification,
     UserStats,
+    Language,
+    Course,
+    CourseI18n,
+    LearningPath,
+    PathUnit,
+    PathUnitI18n,
+    UnitLesson,
+    LessonBlockRecord,
+    Question,
+    UserQuestionAttempt,
+    UserLessonProgress,
+    ReviewQueueItem,
+    AIExplanation,
+    SubscriptionPlan,
+    PlanFeature,
+    UserSubscription,
+    UserDailyUsage,
+    UsageEvent,
+    Payment,
+    PaymentTransaction,
+    TutorProfile,
+    TutorAvailability,
+    TutorBooking,
+    OpportunityCategory,
+    Opportunity,
+    SavedOpportunity,
+    OpportunityGuidanceRequest,
+    ModerationFlag,
+    AuditLog,
 )
 from app.services.recording_service import enforce_retention
 from app.services.realtime_service import process_matchmaking_once, sweep_inactive_queue_users
@@ -47,11 +76,36 @@ async def _ensure_sqlite_user_columns() -> None:
         existing_columns = {row[1] for row in result.fetchall()}
         required_columns = {
             "cefr_level": "ALTER TABLE users ADD COLUMN cefr_level VARCHAR(8) NOT NULL DEFAULT 'A1'",
+            "role": "ALTER TABLE users ADD COLUMN role VARCHAR(24) NOT NULL DEFAULT 'student'",
             "learning_intent": "ALTER TABLE users ADD COLUMN learning_intent VARCHAR(64) NOT NULL DEFAULT 'casual'",
             "preferred_mode": "ALTER TABLE users ADD COLUMN preferred_mode VARCHAR(16) NOT NULL DEFAULT 'text'",
             "report_count": "ALTER TABLE users ADD COLUMN report_count INTEGER NOT NULL DEFAULT 0",
             "drop_rate": "ALTER TABLE users ADD COLUMN drop_rate FLOAT NOT NULL DEFAULT 0.0",
             "avg_session_duration_seconds": "ALTER TABLE users ADD COLUMN avg_session_duration_seconds INTEGER NOT NULL DEFAULT 0",
+        }
+
+        for column_name, ddl in required_columns.items():
+            if column_name not in existing_columns:
+                await conn.execute(text(ddl))
+
+
+async def _ensure_sqlite_lesson_columns() -> None:
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    async with engine.begin() as conn:
+        result = await conn.exec_driver_sql("PRAGMA table_info(lessons)")
+        existing_columns = {row[1] for row in result.fetchall()}
+        required_columns = {
+            "course_id": "ALTER TABLE lessons ADD COLUMN course_id CHAR(32)",
+            "lesson_kind": "ALTER TABLE lessons ADD COLUMN lesson_kind VARCHAR(40)",
+            "is_published": "ALTER TABLE lessons ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT 1",
+            "created_by": "ALTER TABLE lessons ADD COLUMN created_by INTEGER",
+            "updated_by": "ALTER TABLE lessons ADD COLUMN updated_by INTEGER",
+            "published_at": "ALTER TABLE lessons ADD COLUMN published_at DATETIME",
+            "archived_at": "ALTER TABLE lessons ADD COLUMN archived_at DATETIME",
+            "created_at": "ALTER TABLE lessons ADD COLUMN created_at DATETIME",
+            "updated_at": "ALTER TABLE lessons ADD COLUMN updated_at DATETIME",
         }
 
         for column_name, ddl in required_columns.items():
@@ -79,6 +133,7 @@ async def lifespan(_: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     await _ensure_sqlite_user_columns()
+    await _ensure_sqlite_lesson_columns()
 
     loop_task: asyncio.Task | None = None
     if settings.matchmaking_loop_enabled:

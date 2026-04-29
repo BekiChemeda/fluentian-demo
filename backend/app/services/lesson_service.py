@@ -74,15 +74,19 @@ def _extract_json_payload(text: str) -> dict:
 
 
 async def list_lessons(db: AsyncSession, user: User, page: int, page_size: int) -> LessonListResponse:
-    total_result = await db.execute(select(func.count(Lesson.id)))
+    visible_filter = (Lesson.is_published.is_(True), Lesson.archived_at.is_(None))
+    if user.role in {"admin", "moderator"}:
+        visible_filter = (Lesson.archived_at.is_(None),)
+
+    total_result = await db.execute(select(func.count(Lesson.id)).where(*visible_filter))
     total = total_result.scalar_one()
 
     result = await db.execute(
-        select(Lesson).order_by(Lesson.order_index).offset((page - 1) * page_size).limit(page_size)
+        select(Lesson).where(*visible_filter).order_by(Lesson.order_index).offset((page - 1) * page_size).limit(page_size)
     )
     lessons = result.scalars().all()
 
-    all_result = await db.execute(select(Lesson).order_by(Lesson.order_index))
+    all_result = await db.execute(select(Lesson).where(*visible_filter).order_by(Lesson.order_index))
     all_lessons = all_result.scalars().all()
 
     progress_result = await db.execute(select(Progress).where(Progress.user_id == user.id))
@@ -114,6 +118,8 @@ async def get_lesson_by_id(db: AsyncSession, lesson_id: int, user: User) -> Less
     lesson_result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
     lesson = lesson_result.scalar_one_or_none()
     if not lesson:
+        raise AppException("Lesson not found", status_code=404, code="lesson_not_found")
+    if not lesson.is_published and user.role not in {"admin", "moderator"}:
         raise AppException("Lesson not found", status_code=404, code="lesson_not_found")
 
     progress_result = await db.execute(
@@ -155,6 +161,8 @@ async def complete_lesson(db: AsyncSession, user: User, lesson_id: int, score: i
     lesson_result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
     lesson = lesson_result.scalar_one_or_none()
     if not lesson:
+        raise AppException("Lesson not found", status_code=404, code="lesson_not_found")
+    if not lesson.is_published and user.role not in {"admin", "moderator"}:
         raise AppException("Lesson not found", status_code=404, code="lesson_not_found")
 
     previous_lesson_result = await db.execute(
