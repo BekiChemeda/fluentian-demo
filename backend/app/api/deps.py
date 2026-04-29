@@ -33,3 +33,12 @@ async def get_current_user(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+def require_roles(*roles: str):
+    async def dependency(user: User = Depends(get_current_user)) -> User:
+        if user.role not in roles:
+            raise AppException("Insufficient permissions", status_code=403, code="forbidden")
+        return user
+
+    return dependency
