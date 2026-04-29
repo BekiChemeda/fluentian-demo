@@ -1,4 +1,7 @@
-from sqlalchemy import Integer, JSON, String
+from datetime import datetime
+from uuid import UUID
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -13,3 +16,12 @@ class Lesson(Base):
     content: Mapped[dict] = mapped_column(JSON, nullable=False)
     xp_reward: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
     order_index: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    course_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True)
+    lesson_kind: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

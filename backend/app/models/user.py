@@ -12,6 +12,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(24), default="student", nullable=False, index=True)
     native_language: Mapped[str] = mapped_column(String(64), default="Amharic", nullable=False)
     target_language: Mapped[str] = mapped_column(String(64), default="French", nullable=False)
     xp: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

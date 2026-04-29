@@ -1,0 +1,984 @@
+// Advanced DBML schema for an AI-powered French learning platform
+// Designed for: multilingual support, extensible lesson types, AI tutoring,
+// realtime social learning (text/audio/video), and leaderboard analytics.
+
+////////////////////////////////////////////////////////////
+// ENUMS
+////////////////////////////////////////////////////////////
+
+Enum app_role {
+  student
+  tutor
+  admin
+  moderator
+}
+
+Enum proficiency_level {
+  a0
+  a1
+  a2
+  b1
+  b2
+  c1
+  c2
+}
+
+Enum subscription_tier {
+  free
+  plus
+  pro
+  school
+}
+
+Enum lesson_kind {
+  grammar_explainer
+  dialogue
+  vocabulary
+  pronunciation
+  listening
+  reading
+  writing
+  speaking
+  cultural_bridge
+  exam_drill
+  roleplay_simulation
+}
+
+Enum unit_kind {
+  core
+  practice
+  story
+  checkpoint
+  boss
+}
+
+Enum session_kind {
+  learn
+  practice
+  review
+  challenge
+  legendary
+  exam
+}
+
+Enum content_block_kind {
+  rich_text
+  grammar_note
+  sentence_pair
+  dialogue_script
+  vocab_set
+  audio_clip
+  video_clip
+  image
+  ai_hint
+  ai_explainer
+  cultural_note
+  checkpoint
+}
+
+Enum question_kind {
+  mcq_single
+  mcq_multi
+  fill_blank
+  reorder
+  match_pairs
+  short_text
+  long_text
+  ipa_pronunciation
+  speech_record
+  translation
+  listening_comprehension
+  dictation
+  scenario_response
+}
+
+Enum message_kind {
+  text
+  image
+  audio
+  file
+  system
+}
+
+Enum room_kind {
+  dm
+  group
+  level_based
+  class_cohort
+}
+
+Enum call_kind {
+  audio
+  video
+}
+
+Enum call_status {
+  scheduled
+  ringing
+  active
+  ended
+  cancelled
+}
+
+Enum leaderboard_period {
+  weekly
+  monthly
+}
+
+Enum activity_event_kind {
+  lesson_completed
+  xp_awarded
+  streak_increment
+  challenge_completed
+  badge_earned
+  social_helpful_vote
+}
+
+////////////////////////////////////////////////////////////
+// CORE I18N AND IDENTITY
+////////////////////////////////////////////////////////////
+
+Table languages {
+  id uuid [pk]
+  iso_code varchar(10) [not null, unique, note: 'ISO 639-1 or BCP-47, e.g. en, fr, am']
+  english_name varchar(120) [not null]
+  native_name varchar(120)
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table users {
+  id uuid [pk]
+  username varchar(60) [not null, unique]
+  email varchar(255) [not null, unique]
+  role app_role [not null, default: 'student']
+  ui_language_id uuid [not null, ref: > languages.id]
+  base_language_id uuid [not null, ref: > languages.id, note: 'Language user learns with']
+  target_language_id uuid [not null, ref: > languages.id, note: 'Usually French for your app']
+  current_level proficiency_level [not null, default: 'a0']
+  xp_total int [not null, default: 0]
+  streak_days int [not null, default: 0]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table user_profiles {
+  user_id uuid [pk, ref: > users.id]
+  display_name varchar(120)
+  avatar_url text
+  country_code varchar(2)
+  timezone varchar(60) [not null, default: 'UTC']
+  birth_year int
+  bio text
+  preferred_voice_id uuid [ref: > tts_voices.id]
+  learning_goal text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table subscriptions {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  tier subscription_tier [not null, default: 'free']
+  provider varchar(50)
+  provider_customer_id varchar(120)
+  provider_subscription_id varchar(120)
+  status varchar(40) [not null, default: 'active']
+  starts_at timestamptz [not null, default: `now()`]
+  ends_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, status)
+  }
+}
+
+////////////////////////////////////////////////////////////
+// COURSE, LESSON, CONTENT MODEL
+////////////////////////////////////////////////////////////
+
+Table courses {
+  id uuid [pk]
+  target_language_id uuid [not null, ref: > languages.id]
+  code varchar(50) [not null, unique]
+  level_min proficiency_level [not null]
+  level_max proficiency_level [not null]
+  is_published boolean [not null, default: false]
+  created_by uuid [ref: > users.id]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table learning_paths {
+  id uuid [pk]
+  course_id uuid [not null, ref: > courses.id]
+  path_version int [not null, default: 1]
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (course_id, path_version) [unique]
+  }
+}
+
+Table path_units {
+  id uuid [pk]
+  learning_path_id uuid [not null, ref: > learning_paths.id]
+  unit_kind unit_kind [not null, default: 'core']
+  cefr_level proficiency_level [not null]
+  unit_no int [not null]
+  crown_goal int [not null, default: 5]
+  min_mastery_to_unlock numeric(5,2) [not null, default: 0.60]
+  guidebook_payload jsonb
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (learning_path_id, unit_no) [unique]
+  }
+}
+
+Table path_unit_i18n {
+  id uuid [pk]
+  unit_id uuid [not null, ref: > path_units.id]
+  language_id uuid [not null, ref: > languages.id]
+  title varchar(180) [not null]
+  description text
+
+  indexes {
+    (unit_id, language_id) [unique]
+  }
+}
+
+Table unit_lessons {
+  id uuid [pk]
+  unit_id uuid [not null, ref: > path_units.id]
+  lesson_id uuid [not null, ref: > lessons.id]
+  sort_no int [not null]
+  is_optional boolean [not null, default: false]
+
+  indexes {
+    (unit_id, lesson_id) [unique]
+    (unit_id, sort_no) [unique]
+  }
+}
+
+Table skills {
+  id uuid [pk]
+  code varchar(80) [not null, unique]
+  target_language_id uuid [not null, ref: > languages.id]
+  skill_domain varchar(40) [not null, note: 'grammar|vocab|listening|speaking|reading|writing']
+  difficulty_band proficiency_level [not null]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table skill_i18n {
+  id uuid [pk]
+  skill_id uuid [not null, ref: > skills.id]
+  language_id uuid [not null, ref: > languages.id]
+  title varchar(160) [not null]
+  description text
+
+  indexes {
+    (skill_id, language_id) [unique]
+  }
+}
+
+Table lesson_skills {
+  id uuid [pk]
+  lesson_id uuid [not null, ref: > lessons.id]
+  skill_id uuid [not null, ref: > skills.id]
+  weight numeric(5,2) [not null, default: 1.00]
+
+  indexes {
+    (lesson_id, skill_id) [unique]
+  }
+}
+
+Table course_i18n {
+  id uuid [pk]
+  course_id uuid [not null, ref: > courses.id]
+  language_id uuid [not null, ref: > languages.id]
+  title varchar(180) [not null]
+  subtitle varchar(220)
+  description text
+
+  indexes {
+    (course_id, language_id) [unique]
+  }
+}
+
+Table lessons {
+  id uuid [pk]
+  course_id uuid [not null, ref: > courses.id]
+  lesson_kind lesson_kind [not null]
+  level proficiency_level [not null]
+  sequence_no int [not null]
+  estimated_minutes int [not null, default: 8]
+  xp_reward int [not null, default: 20]
+  unlock_rule jsonb [note: 'e.g. min score, prerequisite lessons']
+  is_published boolean [not null, default: false]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (course_id, sequence_no) [unique]
+    (course_id, level)
+  }
+}
+
+Table lesson_i18n {
+  id uuid [pk]
+  lesson_id uuid [not null, ref: > lessons.id]
+  language_id uuid [not null, ref: > languages.id]
+  title varchar(180) [not null]
+  learning_objectives text
+  intro_text text
+
+  indexes {
+    (lesson_id, language_id) [unique]
+  }
+}
+
+Table lesson_blocks {
+  id uuid [pk]
+  lesson_id uuid [not null, ref: > lessons.id]
+  block_kind content_block_kind [not null]
+  sequence_no int [not null]
+  block_payload jsonb [not null, note: 'Flexible data per block type']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (lesson_id, sequence_no) [unique]
+    (lesson_id, block_kind)
+  }
+}
+
+Table lesson_block_i18n {
+  id uuid [pk]
+  block_id uuid [not null, ref: > lesson_blocks.id]
+  language_id uuid [not null, ref: > languages.id]
+  localized_payload jsonb [not null, note: 'Localized explanations, hints, captions']
+
+  indexes {
+    (block_id, language_id) [unique]
+  }
+}
+
+Table dialogue_characters {
+  id uuid [pk]
+  slug varchar(80) [not null, unique]
+  default_display_name varchar(120) [not null]
+  gender varchar(20)
+  age_range varchar(30)
+  personality_traits jsonb
+  preferences jsonb
+  backstory text
+  default_voice_id uuid [ref: > tts_voices.id]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table dialogue_character_i18n {
+  id uuid [pk]
+  character_id uuid [not null, ref: > dialogue_characters.id]
+  language_id uuid [not null, ref: > languages.id]
+  display_name varchar(120)
+  backstory_localized text
+
+  indexes {
+    (character_id, language_id) [unique]
+  }
+}
+
+Table lesson_dialogues {
+  id uuid [pk]
+  lesson_id uuid [not null, ref: > lessons.id]
+  title varchar(180)
+  context_note text
+  sequence_no int [not null, default: 1]
+
+  indexes {
+    (lesson_id, sequence_no) [unique]
+  }
+}
+
+Table dialogue_lines {
+  id uuid [pk]
+  dialogue_id uuid [not null, ref: > lesson_dialogues.id]
+  character_id uuid [not null, ref: > dialogue_characters.id]
+  sequence_no int [not null]
+  target_text text [not null, note: 'French line']
+  base_explanation text [note: 'Default base-language explanation (en first)']
+  phonetic_hint text
+  audio_asset_id uuid [ref: > media_assets.id]
+
+  indexes {
+    (dialogue_id, sequence_no) [unique]
+  }
+}
+
+Table dialogue_line_i18n {
+  id uuid [pk]
+  dialogue_line_id uuid [not null, ref: > dialogue_lines.id]
+  language_id uuid [not null, ref: > languages.id]
+  explanation_text text [not null]
+
+  indexes {
+    (dialogue_line_id, language_id) [unique]
+  }
+}
+
+////////////////////////////////////////////////////////////
+// QUESTION ENGINE (ADVANCED + EXTENSIBLE)
+////////////////////////////////////////////////////////////
+
+Table questions {
+  id uuid [pk]
+  lesson_id uuid [not null, ref: > lessons.id]
+  question_kind question_kind [not null]
+  sequence_no int [not null]
+  difficulty numeric(3,2) [not null, default: 0.50]
+  prompt_payload jsonb [not null, note: 'Stem, media refs, instructions']
+  grading_payload jsonb [not null, note: 'Rules, expected answers, tolerances']
+  hint_payload jsonb
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (lesson_id, sequence_no) [unique]
+    (lesson_id, question_kind)
+  }
+}
+
+Table question_i18n {
+  id uuid [pk]
+  question_id uuid [not null, ref: > questions.id]
+  language_id uuid [not null, ref: > languages.id]
+  localized_prompt_payload jsonb [not null]
+  localized_hint_payload jsonb
+
+  indexes {
+    (question_id, language_id) [unique]
+  }
+}
+
+Table user_question_attempts {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  lesson_id uuid [not null, ref: > lessons.id]
+  question_id uuid [not null, ref: > questions.id]
+  attempt_no int [not null]
+  answer_payload jsonb [not null]
+  score numeric(5,2) [not null, default: 0]
+  is_correct boolean [not null, default: false]
+  latency_ms int
+  ai_feedback_id uuid [ref: > ai_explanations.id]
+  submitted_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, question_id, attempt_no) [unique]
+    (user_id, lesson_id)
+  }
+}
+
+Table user_lesson_progress {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  lesson_id uuid [not null, ref: > lessons.id]
+  status varchar(30) [not null, default: 'in_progress']
+  mastery_score numeric(5,2) [not null, default: 0]
+  best_score numeric(5,2) [not null, default: 0]
+  attempts_count int [not null, default: 0]
+  started_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+  last_activity_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, lesson_id) [unique]
+    (lesson_id, status)
+  }
+}
+
+Table user_unit_progress {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  unit_id uuid [not null, ref: > path_units.id]
+  crowns_earned int [not null, default: 0]
+  mastery_score numeric(5,2) [not null, default: 0]
+  is_unlocked boolean [not null, default: false]
+  is_completed boolean [not null, default: false]
+  started_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, unit_id) [unique]
+    (unit_id, is_completed)
+  }
+}
+
+Table learning_sessions {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  session_kind session_kind [not null, default: 'learn']
+  target_language_id uuid [not null, ref: > languages.id]
+  base_language_id uuid [not null, ref: > languages.id]
+  unit_id uuid [ref: > path_units.id]
+  lesson_id uuid [ref: > lessons.id]
+  started_at timestamptz [not null, default: `now()`]
+  ended_at timestamptz
+  duration_seconds int
+  accuracy_score numeric(5,2)
+  xp_earned int [not null, default: 0]
+  hearts_used int [not null, default: 0]
+  completed boolean [not null, default: false]
+
+  indexes {
+    (user_id, started_at)
+    (user_id, session_kind, target_language_id)
+  }
+}
+
+Table user_skill_mastery {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  skill_id uuid [not null, ref: > skills.id]
+  target_language_id uuid [not null, ref: > languages.id]
+  proficiency_score numeric(5,2) [not null, default: 0]
+  memory_strength numeric(5,2) [not null, default: 0]
+  confidence_score numeric(5,2) [not null, default: 0]
+  last_practiced_at timestamptz
+  next_review_at timestamptz
+  decay_rate numeric(6,4) [not null, default: 0.0150]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, skill_id) [unique]
+    (user_id, next_review_at)
+  }
+}
+
+Table review_queue_items {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  skill_id uuid [not null, ref: > skills.id]
+  source_lesson_id uuid [ref: > lessons.id]
+  due_at timestamptz [not null]
+  priority int [not null, default: 50]
+  state varchar(30) [not null, default: 'due']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, due_at, state)
+    (user_id, skill_id, state)
+  }
+}
+
+Table placement_tests {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  target_language_id uuid [not null, ref: > languages.id]
+  base_language_id uuid [not null, ref: > languages.id]
+  started_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+  estimated_level proficiency_level
+  confidence numeric(5,2)
+  raw_score numeric(5,2)
+}
+
+////////////////////////////////////////////////////////////
+// AI ASSISTANT / EXPLANATION LAYER
+////////////////////////////////////////////////////////////
+
+Table ai_models {
+  id uuid [pk]
+  provider varchar(60) [not null]
+  model_name varchar(120) [not null]
+  model_version varchar(60)
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (provider, model_name, model_version) [unique]
+  }
+}
+
+Table ai_prompts {
+  id uuid [pk]
+  prompt_key varchar(120) [not null, unique]
+  prompt_template text [not null]
+  prompt_version int [not null, default: 1]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table ai_explanations {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  lesson_id uuid [ref: > lessons.id]
+  question_id uuid [ref: > questions.id]
+  source_type varchar(40) [not null, note: 'lesson|question|chat|dialogue_line']
+  source_id uuid
+  base_language_id uuid [not null, ref: > languages.id]
+  target_language_id uuid [not null, ref: > languages.id]
+  user_input text
+  explanation_text text [not null]
+  cefr_level proficiency_level
+  model_id uuid [ref: > ai_models.id]
+  prompt_id uuid [ref: > ai_prompts.id]
+  tokens_in int
+  tokens_out int
+  latency_ms int
+  quality_rating int [note: '1-5 by user']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, created_at)
+    (lesson_id, question_id)
+    (source_type, source_id)
+  }
+}
+
+////////////////////////////////////////////////////////////
+// SOCIAL LEARNING: TEXT CHAT + AUDIO/VIDEO CALLS
+////////////////////////////////////////////////////////////
+
+Table rooms {
+  id uuid [pk]
+  room_kind room_kind [not null]
+  title varchar(160)
+  target_language_id uuid [not null, ref: > languages.id]
+  base_language_id uuid [ref: > languages.id, note: 'Optional segmentation by learner base language']
+  min_level proficiency_level
+  max_level proficiency_level
+  is_private boolean [not null, default: false]
+  created_by uuid [not null, ref: > users.id]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (room_kind, target_language_id, base_language_id)
+  }
+}
+
+Table direct_conversations {
+  id uuid [pk]
+  room_id uuid [not null, unique, ref: > rooms.id, note: 'Room must be room_kind=dm']
+  user_low_id uuid [not null, ref: > users.id, note: 'Lower UUID user id for stable uniqueness']
+  user_high_id uuid [not null, ref: > users.id, note: 'Higher UUID user id for stable uniqueness']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_low_id, user_high_id) [unique]
+  }
+}
+
+Table room_members {
+  id uuid [pk]
+  room_id uuid [not null, ref: > rooms.id]
+  user_id uuid [not null, ref: > users.id]
+  member_role varchar(30) [not null, default: 'member']
+  joined_at timestamptz [not null, default: `now()`]
+  last_read_message_id uuid
+
+  indexes {
+    (room_id, user_id) [unique]
+  }
+}
+
+Table messages {
+  id uuid [pk]
+  room_id uuid [not null, ref: > rooms.id]
+  sender_user_id uuid [not null, ref: > users.id]
+  message_kind message_kind [not null, default: 'text']
+  body text
+  source_language_id uuid [ref: > languages.id, note: 'Detected or selected message language']
+  target_language_id uuid [ref: > languages.id, note: 'Expected room target language (French)']
+  media_asset_id uuid [ref: > media_assets.id]
+  reply_to_message_id uuid [ref: > messages.id]
+  created_at timestamptz [not null, default: `now()`]
+  edited_at timestamptz
+  deleted_at timestamptz
+
+  indexes {
+    (room_id, created_at)
+    (sender_user_id, created_at)
+  }
+}
+
+Table message_translations {
+  id uuid [pk]
+  message_id uuid [not null, ref: > messages.id]
+  target_language_id uuid [not null, ref: > languages.id, note: 'Receiver base language']
+  translated_body text [not null]
+  provider varchar(40)
+  model_name varchar(120)
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (message_id, target_language_id) [unique]
+  }
+}
+
+Table message_language_assists {
+  id uuid [pk]
+  message_id uuid [not null, ref: > messages.id]
+  user_id uuid [not null, ref: > users.id]
+  assist_type varchar(40) [not null, note: 'grammar_fix|rephrase|translate_to_french|explain']
+  input_text text
+  output_text text [not null]
+  model_id uuid [ref: > ai_models.id]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (message_id, user_id, assist_type)
+  }
+}
+
+Table call_sessions {
+  id uuid [pk]
+  room_id uuid [not null, ref: > rooms.id]
+  started_by uuid [not null, ref: > users.id]
+  call_kind call_kind [not null]
+  status call_status [not null, default: 'scheduled']
+  provider varchar(40) [not null, note: 'agora|twilio|livekit|webrtc']
+  provider_session_id varchar(120)
+  started_at timestamptz
+  ended_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (room_id, created_at)
+  }
+}
+
+Table call_participants {
+  id uuid [pk]
+  call_session_id uuid [not null, ref: > call_sessions.id]
+  user_id uuid [not null, ref: > users.id]
+  joined_at timestamptz
+  left_at timestamptz
+  is_muted boolean [not null, default: false]
+  network_quality_score int
+  total_connected_seconds int [not null, default: 0, note: 'Total call time for user in this session']
+  audio_active_seconds int [not null, default: 0, note: 'Mic/audio participation time']
+  video_active_seconds int [not null, default: 0, note: 'Camera-on time']
+  speaking_seconds int [not null, default: 0, note: 'Speech detected duration']
+
+  indexes {
+    (call_session_id, user_id) [unique]
+  }
+}
+
+Table call_session_metrics {
+  id uuid [pk]
+  call_session_id uuid [not null, unique, ref: > call_sessions.id]
+  participant_count int [not null, default: 0]
+  peak_participant_count int [not null, default: 0]
+  session_duration_seconds int [not null, default: 0]
+  total_audio_participation_seconds int [not null, default: 0]
+  total_video_participation_seconds int [not null, default: 0]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table user_social_daily_stats {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  stat_date date [not null]
+  target_language_id uuid [not null, ref: > languages.id]
+  base_language_id uuid [not null, ref: > languages.id]
+  dm_messages_sent int [not null, default: 0]
+  group_messages_sent int [not null, default: 0]
+  audio_call_minutes numeric(8,2) [not null, default: 0]
+  video_call_minutes numeric(8,2) [not null, default: 0]
+  dm_call_minutes numeric(8,2) [not null, default: 0]
+  group_call_minutes numeric(8,2) [not null, default: 0]
+  helpful_votes_received int [not null, default: 0]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, stat_date, target_language_id, base_language_id) [unique]
+    (stat_date, target_language_id, base_language_id)
+  }
+}
+
+////////////////////////////////////////////////////////////
+// GAMIFICATION + LEADERBOARDS
+////////////////////////////////////////////////////////////
+
+Table activity_events {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  event_kind activity_event_kind [not null]
+  event_time timestamptz [not null, default: `now()`]
+  xp_delta int [not null, default: 0]
+  metadata jsonb
+
+  indexes {
+    (user_id, event_time)
+    (event_kind, event_time)
+  }
+}
+
+Table leaderboard_snapshots {
+  id uuid [pk]
+  period_type leaderboard_period [not null]
+  target_language_id uuid [not null, ref: > languages.id]
+  base_language_id uuid [ref: > languages.id, note: 'Optional segmented leaderboard']
+  level_band proficiency_level
+  period_start date [not null]
+  period_end date [not null]
+  generated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (period_type, target_language_id, base_language_id, level_band, period_start) [unique]
+  }
+}
+
+Table leaderboard_entries {
+  id uuid [pk]
+  snapshot_id uuid [not null, ref: > leaderboard_snapshots.id]
+  user_id uuid [not null, ref: > users.id]
+  rank int [not null]
+  xp_earned int [not null]
+  lessons_completed int [not null, default: 0]
+  streak_days int [not null, default: 0]
+
+  indexes {
+    (snapshot_id, rank) [unique]
+    (snapshot_id, user_id) [unique]
+  }
+}
+
+Table badges {
+  id uuid [pk]
+  code varchar(60) [not null, unique]
+  icon_url text
+  criteria_payload jsonb [not null]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table user_badges {
+  id uuid [pk]
+  user_id uuid [not null, ref: > users.id]
+  badge_id uuid [not null, ref: > badges.id]
+  awarded_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, badge_id) [unique]
+  }
+}
+
+////////////////////////////////////////////////////////////
+// CULTURAL EXCHANGE
+////////////////////////////////////////////////////////////
+
+Table cultural_topics {
+  id uuid [pk]
+  slug varchar(100) [not null, unique]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table cultural_topic_i18n {
+  id uuid [pk]
+  topic_id uuid [not null, ref: > cultural_topics.id]
+  language_id uuid [not null, ref: > languages.id]
+  title varchar(180) [not null]
+  summary text
+
+  indexes {
+    (topic_id, language_id) [unique]
+  }
+}
+
+Table cultural_items {
+  id uuid [pk]
+  topic_id uuid [not null, ref: > cultural_topics.id]
+  language_id uuid [not null, ref: > languages.id, note: 'Culture origin language/community']
+  title varchar(180) [not null]
+  body text [not null]
+  media_asset_id uuid [ref: > media_assets.id]
+  tags jsonb
+  created_by uuid [ref: > users.id]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table cultural_bridges {
+  id uuid [pk]
+  topic_id uuid [not null, ref: > cultural_topics.id]
+  language_a_id uuid [not null, ref: > languages.id]
+  language_b_id uuid [not null, ref: > languages.id]
+  comparison_text text [not null]
+  practical_phrase_pairs jsonb [note: 'e.g. greeting norms, formal/informal examples']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (topic_id, language_a_id, language_b_id) [unique]
+  }
+}
+
+////////////////////////////////////////////////////////////
+// MEDIA, TTS, ASR
+////////////////////////////////////////////////////////////
+
+Table media_assets {
+  id uuid [pk]
+  storage_provider varchar(40) [not null, default: 's3']
+  storage_key text [not null, unique]
+  mime_type varchar(80) [not null]
+  duration_ms int
+  size_bytes bigint
+  checksum_sha256 varchar(64)
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table tts_voices {
+  id uuid [pk]
+  provider varchar(50) [not null]
+  voice_key varchar(120) [not null]
+  language_id uuid [not null, ref: > languages.id]
+  accent_label varchar(80)
+  gender varchar(20)
+  sample_audio_asset_id uuid [ref: > media_assets.id]
+  is_active boolean [not null, default: true]
+
+  indexes {
+    (provider, voice_key) [unique]
+  }
+}
+
+////////////////////////////////////////////////////////////
+// PAYLOAD AUDIT + SAFETY
+////////////////////////////////////////////////////////////
+
+Table moderation_flags {
+  id uuid [pk]
+  user_id uuid [ref: > users.id]
+  source_type varchar(40) [not null, note: 'message|ai_explanation|profile|cultural_item']
+  source_id uuid [not null]
+  reason_code varchar(60) [not null]
+  severity int [not null, default: 1]
+  status varchar(30) [not null, default: 'open']
+  created_at timestamptz [not null, default: `now()`]
+  resolved_at timestamptz
+
+  indexes {
+    (source_type, source_id)
+    (status, severity)
+  }
+}
+
+Table audit_logs {
+  id uuid [pk]
+  actor_user_id uuid [ref: > users.id]
+  action varchar(80) [not null]
+  entity_type varchar(60) [not null]
+  entity_id uuid
+  metadata jsonb
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (entity_type, entity_id)
+    (actor_user_id, created_at)
+  }
+}
+
+
+

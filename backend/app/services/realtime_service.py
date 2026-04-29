@@ -260,17 +260,15 @@ def _score(a: dict, b: dict, now_ts: float) -> float | None:
     b_level = _CEFR_ORDER.get(str(b.get("cefr_level", "A1")).upper(), 1)
     level_delta = abs(a_level - b_level)
 
+    same_mode = a.get("preferred_mode") == b.get("preferred_mode")
+
     if strictness == "strict":
         if level_delta != 0:
             return None
         if a.get("learning_intent") != b.get("learning_intent"):
             return None
-        if a.get("preferred_mode") != b.get("preferred_mode"):
-            return None
     elif strictness == "relaxed":
         if level_delta > 1:
-            return None
-        if a.get("preferred_mode") != b.get("preferred_mode"):
             return None
     else:
         if level_delta > 3:
@@ -286,7 +284,8 @@ def _score(a: dict, b: dict, now_ts: float) -> float | None:
         float(a.get("avg_session_duration_seconds", 0))
         + float(b.get("avg_session_duration_seconds", 0))
     ) / 120
-    mode_bonus = 5.0 if a.get("preferred_mode") == b.get("preferred_mode") else 0.0
+    # Keep same-mode pairs preferred while still allowing mixed-mode fallback.
+    mode_bonus = 5.0 if same_mode else -1.5
     wait_bonus = min(wait_seconds / 5.0, 10.0)
 
     return mode_bonus + wait_bonus + engagement_bonus - behavior_penalty
